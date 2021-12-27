@@ -1,0 +1,3 @@
+[submodule "depth2scan"]
+	path = depth2scan
+	url = git@github.com:ferasboulala/depth2scan.git
