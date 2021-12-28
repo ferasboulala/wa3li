@@ -1,10 +1,107 @@
-#include "kinect.h"
+#include "wa3li/kinect.h"
 
+#include <algorithm>
+
+#include "depth2scan/depth2scan.h"
 #include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/image_encodings.hpp"
 
-KinectNode *KinectNode::m_kinect;
+// TODO:
+// publishers:
+//  depth
+//  rgb
+//  ir
+//  scans
+// services:
+//  tilt
+//  led
+// params:
+//  height
+//  angle
 
-void depth_callback(freenect_device *, void *, uint32_t) {}
+KinectNode *KinectNode::m_kinect = nullptr;
+
+void rgb_callback_redirect(freenect_device *, void *data, uint32_t) { KinectNode::get_kinect()->rgb_callback(data); }
+
+void depth_callback_redirect(freenect_device *, void *data, uint32_t)
+{
+    KinectNode::get_kinect()->depth_callback(data);
+}
+
+sensor_msgs::msg::Image prepare_image_message(const cv::Mat &img,
+                                              const std::string &encoding,
+                                              unsigned pixel_size,
+                                              const std_msgs::msg::Header &header)
+{
+    sensor_msgs::msg::Image image_message;
+    image_message.header = header;
+    image_message.height = img.rows;
+    image_message.width = img.cols;
+    image_message.encoding = encoding;
+    image_message.step = img.cols * pixel_size;
+    image_message.data.resize(image_message.step * img.rows);
+    std::copy(img.data, img.data + image_message.data.size(), image_message.data.begin());
+
+    return image_message;
+}
+
+void KinectNode::rgb_callback(void *data)
+{
+    cv::Mat frame = cv::Mat(depth2scan::limits::DEPTH_HEIGHT,
+                            depth2scan::limits::DEPTH_WIDTH,
+                            CV_8UC3,
+                            reinterpret_cast<unsigned char *>(data));
+
+    std_msgs::msg::Header header;
+    header.frame_id = "kinect";
+    header.stamp = now();
+
+    const sensor_msgs::msg::Image rgb_image =
+        prepare_image_message(frame, sensor_msgs::image_encodings::TYPE_8UC3, sizeof(unsigned char) * 3, header);
+    m_rgb_publisher->publish(rgb_image);
+}
+
+#include <iostream>
+void KinectNode::depth_callback(void *data)
+{
+    cv::Mat frame = cv::Mat(depth2scan::limits::DEPTH_HEIGHT,
+                            depth2scan::limits::DEPTH_WIDTH,
+                            CV_16UC1,
+                            reinterpret_cast<unsigned char *>(data));
+    frame.setTo(0, frame == FREENECT_DEPTH_RAW_NO_VALUE);
+
+    cv::Mat depth;
+    frame.convertTo(depth, CV_64F);
+    //depth = depth * (depth2scan::limits::MAX_DIST / FREENECT_DEPTH_RAW_MAX_VALUE);
+    // FIXME: Use param tilt and height
+    //const std::vector<double> scans = depth2scan::depth2scan(depth, 0, 0.34, nullptr);
+
+    std_msgs::msg::Header header;
+    header.frame_id = "kinect";
+    std::cout << "FOO" << std::endl;
+    header.stamp = now();
+    std::cout << "FOO" << std::endl;
+
+    //sensor_msgs::msg::LaserScan laser_scan_message;
+    //laser_scan_message.header = header;
+    //laser_scan_message.angle_min = 0;
+    //laser_scan_message.angle_max = DEG2RAD(depth2scan::limits::HORIZONTAL_FOV);
+    //laser_scan_message.angle_increment = DEG2RAD(depth2scan::limits::HORIZONTAL_FOV / depth2scan::limits::DEPTH_WIDTH);
+    //laser_scan_message.time_increment = 0;
+    //laser_scan_message.scan_time = 1.0 / 30;  // FIXME: Use real values
+    //laser_scan_message.range_min = depth2scan::limits::MIN_DIST;
+    //laser_scan_message.range_max = depth2scan::limits::MAX_DIST;
+    //laser_scan_message.ranges.reserve(scans.size());
+    //for (double dist : scans)
+    //{
+    //    laser_scan_message.ranges.push_back(dist);
+    //}
+    //m_laser_scan_publisher->publish(laser_scan_message);
+
+    const sensor_msgs::msg::Image depth_message =
+        prepare_image_message(depth, sensor_msgs::image_encodings::TYPE_64FC1, sizeof(double), header);
+    m_depth_publisher->publish(depth_message);
+}
 
 KinectNode *KinectNode::create()
 {
@@ -22,9 +119,7 @@ KinectNode *KinectNode::create()
         return nullptr;
     }
 
-    freenect_set_log_level(f_ctx, FREENECT_LOG_ERROR);
-    freenect_select_subdevices(f_ctx,
-                               static_cast<freenect_device_flags>(FREENECT_DEVICE_MOTOR | FREENECT_DEVICE_CAMERA));
+    freenect_set_log_level(f_ctx, FREENECT_LOG_DEBUG);
 
     const int number_of_devices = freenect_num_devices(f_ctx);
     if (number_of_devices < 1)
@@ -34,8 +129,6 @@ KinectNode *KinectNode::create()
         return nullptr;
     }
 
-    RCLCPP_INFO(logger, "Number of devices found : %d", number_of_devices);
-
     freenect_device *f_dev;
     if (freenect_open_device(f_ctx, &f_dev, 0) < 0)
     {
@@ -44,10 +137,11 @@ KinectNode *KinectNode::create()
         return nullptr;
     }
 
-    freenect_set_depth_callback(f_dev, depth_callback);
-    const int res =
+    const int depth_res =
         freenect_set_depth_mode(f_dev, freenect_find_depth_mode(FREENECT_RESOLUTION_MEDIUM, FREENECT_DEPTH_11BIT));
-    if (res < 0)
+    const int rgb_res =
+        freenect_set_video_mode(f_dev, freenect_find_video_mode(FREENECT_RESOLUTION_MEDIUM, FREENECT_VIDEO_RGB));
+    if (depth_res < 0 || rgb_res < 0)
     {
         RCLCPP_ERROR(logger, "Could not set resolution");
         freenect_close_device(f_dev);
@@ -55,7 +149,16 @@ KinectNode *KinectNode::create()
         return nullptr;
     }
 
-    freenect_start_depth(f_dev);
+    freenect_set_depth_callback(f_dev, depth_callback_redirect);
+    freenect_set_video_callback(f_dev, rgb_callback_redirect);
+
+    if (freenect_start_depth(f_dev) < 0 || freenect_start_video(f_dev) < 0)
+    {
+        RCLCPP_ERROR(logger, "Could not start video streams");
+        freenect_close_device(f_dev);
+        freenect_shutdown(f_ctx);
+        return nullptr;
+    }
 
     m_kinect = new KinectNode(f_ctx, f_dev);
 
@@ -76,12 +179,18 @@ KinectNode::KinectNode(freenect_context *const f_ctx, freenect_device *const f_d
     : Node("kinect_node"), m_f_ctx(f_ctx), m_f_dev(f_dev)
 {
     using namespace std::chrono_literals;
-    m_timer = this->create_wall_timer(10ms, std::bind(&KinectNode::timer_callback, this));
+
+    m_laser_scan_publisher = create_publisher<sensor_msgs::msg::LaserScan>("kinect/laser_scan", 10);
+    m_depth_publisher = create_publisher<sensor_msgs::msg::Image>("kinect/depth", 10);
+    m_rgb_publisher = create_publisher<sensor_msgs::msg::Image>("kinect/rgb", 10);
+
+    m_timer = create_wall_timer(10ms, std::bind(&KinectNode::timer_callback, this));
 }
 
 KinectNode::~KinectNode()
 {
     freenect_stop_depth(m_f_dev);
+    freenect_stop_video(m_f_dev);
     freenect_close_device(m_f_dev);
     freenect_shutdown(m_f_ctx);
 }
