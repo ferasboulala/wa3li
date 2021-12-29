@@ -4,3 +4,6 @@
 [submodule "kobuki"]
 	path = kobuki
 	url = git@github.com:ferasboulala/kobuki.git
+[submodule "slam"]
+	path = slam
+	url = git@github.com:ferasboulala/slam.git
