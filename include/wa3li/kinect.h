@@ -1,8 +1,5 @@
 #pragma once
 
-#include <chrono>
-#include <functional>
-#include <memory>
 #include <opencv2/opencv.hpp>
 
 #include "libfreenect/libfreenect.h"

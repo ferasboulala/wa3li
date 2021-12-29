@@ -15,29 +15,36 @@ find_package(OpenCV REQUIRED)
 
 include_directories("${PROJECT_SOURCE_DIR}/include/")
 include_directories("${PROJECT_SOURCE_DIR}/depth2scan/")
+include_directories("${PROJECT_SOURCE_DIR}/kobuki/")
 include_directories(${OpenCV_INCLUDE_DIRS})
 
 file(GLOB SUBMODULES_PROJECT_SOURCES
     "${PROJECT_SOURCE_DIR}/depth2scan/depth2scan/*.cpp"
-    "${PROJECT_SOURCE_DIR}/depth2scan/depth2scan/thirdparty/*.cpp"
+    "${PROJECT_SOURCE_DIR}/kobuki/kobuki/*.cpp"
 )
 
-add_executable(kinect_node src/kinect.cpp ${SUBMODULES_PROJECT_SOURCES})
-target_link_libraries(kinect_node
-    ${rclcpp_LIBRARIES}
-    ${std_msgs_LIBRARIES}
-    ${sensor_msgs_LIBRARIES}
-    ${OpenCV_LIBRARIES}
-    ${FREENECT_LIBRARIES}
-    -lopencv_core
-    -lopencv_highgui
-    -lopencv_imgproc
-    -pthread
-    -lfreenect
-    -lfreenect_sync)
+macro(app progname source)
+    add_executable(${progname} ${source} ${SUBMODULES_PROJECT_SOURCES})
+    target_link_libraries(${progname}
+        ${rclcpp_LIBRARIES}
+        ${std_msgs_LIBRARIES}
+        ${sensor_msgs_LIBRARIES}
+        ${OpenCV_LIBRARIES}
+        ${FREENECT_LIBRARIES}
+        -lopencv_core
+        -lopencv_highgui
+        -lopencv_imgproc
+        -pthread
+        -lfreenect
+        -lfreenect_sync)
+endmacro()
+
+app(kinect_node src/kinect.cpp)
+app(kobuki_node src/kobuki.cpp)
 
 install(TARGETS
     kinect_node
+    kobuki_node
     DESTINATION lib/${PROJECT_NAME})
 
 ament_package()

@@ -1,3 +1,6 @@
 [submodule "depth2scan"]
 	path = depth2scan
 	url = git@github.com:ferasboulala/depth2scan.git
+[submodule "kobuki"]
+	path = kobuki
+	url = git@github.com:ferasboulala/kobuki.git
