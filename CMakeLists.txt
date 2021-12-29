@@ -33,7 +33,8 @@ target_link_libraries(kinect_node
     -lopencv_highgui
     -lopencv_imgproc
     -pthread
-    -lfreenect)
+    -lfreenect
+    -lfreenect_sync)
 
 install(TARGETS
     kinect_node

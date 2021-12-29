@@ -8,6 +8,30 @@
 
 KinectNode *KinectNode::m_kinect = nullptr;
 
+bool KinectNode::imu_callback()
+{
+    freenect_raw_tilt_state *state = freenect_get_tilt_state(m_f_dev);
+    if (!state)
+    {
+        RCLCPP_ERROR(get_logger(), "Could not retrieve raw imu data");
+        return false;
+    }
+
+    double dx, dy, dz;
+    freenect_get_mks_accel(state, &dx, &dy, &dz);
+
+    sensor_msgs::msg::Imu imu_message;
+    imu_message.header.frame_id = "kinect";
+    imu_message.header.stamp = now();
+    imu_message.linear_acceleration.x = dx;
+    imu_message.linear_acceleration.y = dy;
+    imu_message.linear_acceleration.z = dz;
+
+    m_imu_publisher->publish(imu_message);
+
+    return true;
+}
+
 void rgb_callback_redirect(freenect_device *, void *data, uint32_t)
 {
     KinectNode *kinect = KinectNode::get_kinect();
@@ -157,7 +181,13 @@ void KinectNode::timer_callback()
     const int status = freenect_process_events(m_f_ctx);
     if (status < 0)
     {
-        RCLCPP_ERROR(this->get_logger(), "An error occured with the kinect device");
+        RCLCPP_ERROR(get_logger(), "An error occured with the kinect device");
+        exit(-1);
+    }
+
+    if (!imu_callback())
+    {
+        RCLCPP_ERROR(get_logger(), "Could not process imu data");
         exit(-1);
     }
 }
@@ -168,6 +198,7 @@ KinectNode::KinectNode(freenect_context *const f_ctx, freenect_device *const f_d
     using namespace std::chrono_literals;
 
     m_laser_scan_publisher = create_publisher<sensor_msgs::msg::LaserScan>("kinect/laser_scan", 10);
+    m_imu_publisher = create_publisher<sensor_msgs::msg::Imu>("kinect/imu", 10);
     m_depth_publisher = create_publisher<sensor_msgs::msg::Image>("kinect/depth", 10);
     m_rgb_publisher = create_publisher<sensor_msgs::msg::Image>("kinect/rgb", 10);
 
