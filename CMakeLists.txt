@@ -10,6 +10,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 
 find_package(OpenCV REQUIRED)
 
@@ -29,6 +30,7 @@ macro(app progname source)
         ${rclcpp_LIBRARIES}
         ${std_msgs_LIBRARIES}
         ${sensor_msgs_LIBRARIES}
+        ${nav_msgs_LIBRARIES}
         ${OpenCV_LIBRARIES}
         ${FREENECT_LIBRARIES}
         -lopencv_core
