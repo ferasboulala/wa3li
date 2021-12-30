@@ -11,8 +11,15 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
-
 find_package(OpenCV REQUIRED)
+# TODO: Add libfreenect search
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+    "srv/GetLed.srv"
+    "srv/SetLed.srv"
+    "srv/GetTilt.srv"
+    "srv/SetTilt.srv"
+)
 
 include_directories("${PROJECT_SOURCE_DIR}/include/")
 include_directories("${PROJECT_SOURCE_DIR}/depth2scan/")
