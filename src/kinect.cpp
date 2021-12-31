@@ -32,7 +32,7 @@ bool KinectNode::imu_callback()
     return true;
 }
 
-void rgb_callback_redirect(freenect_device *, void *data, uint32_t)
+static void rgb_callback_redirect(freenect_device *, void *data, uint32_t)
 {
     KinectNode *kinect = KinectNode::get_kinect();
     if (!kinect)
@@ -42,7 +42,7 @@ void rgb_callback_redirect(freenect_device *, void *data, uint32_t)
     kinect->rgb_callback(data);
 }
 
-void depth_callback_redirect(freenect_device *, void *data, uint32_t)
+static void depth_callback_redirect(freenect_device *, void *data, uint32_t)
 {
     KinectNode *kinect = KinectNode::get_kinect();
     if (!kinect)
@@ -52,7 +52,9 @@ void depth_callback_redirect(freenect_device *, void *data, uint32_t)
     kinect->depth_callback(data);
 }
 
-sensor_msgs::msg::Image prepare_image_message(const cv::Mat &img, const std::string &encoding, unsigned pixel_size)
+sensor_msgs::msg::Image prepare_image_message(const cv::Mat &img,
+                                              const std::string &encoding,
+                                              unsigned pixel_size)
 {
     sensor_msgs::msg::Image image_message;
     image_message.header.frame_id = "kinect";
@@ -74,8 +76,8 @@ void KinectNode::rgb_callback(void *data)
                             CV_8UC3,
                             reinterpret_cast<unsigned char *>(data));
     cv::cvtColor(frame, frame, cv::COLOR_BGR2RGB);
-    const sensor_msgs::msg::Image rgb_image =
-        prepare_image_message(frame, sensor_msgs::image_encodings::TYPE_8UC3, sizeof(unsigned char) * 3);
+    const sensor_msgs::msg::Image rgb_image = prepare_image_message(
+        frame, sensor_msgs::image_encodings::TYPE_8UC3, sizeof(unsigned char) * 3);
     m_rgb_publisher->publish(rgb_image);
 }
 
@@ -101,7 +103,8 @@ void KinectNode::depth_callback(void *data)
     laser_scan_message.header = depth_message.header;
     laser_scan_message.angle_min = 0;
     laser_scan_message.angle_max = DEG2RAD(depth2scan::limits::HORIZONTAL_FOV);
-    laser_scan_message.angle_increment = DEG2RAD(depth2scan::limits::HORIZONTAL_FOV / depth2scan::limits::DEPTH_WIDTH);
+    laser_scan_message.angle_increment =
+        DEG2RAD(depth2scan::limits::HORIZONTAL_FOV / depth2scan::limits::DEPTH_WIDTH);
     laser_scan_message.time_increment = 0;
     laser_scan_message.scan_time = 1.0 / 30;  // FIXME: Use real values
     laser_scan_message.range_min = depth2scan::limits::MIN_DIST;
@@ -148,10 +151,10 @@ KinectNode *KinectNode::create()
         return nullptr;
     }
 
-    const int depth_res =
-        freenect_set_depth_mode(f_dev, freenect_find_depth_mode(FREENECT_RESOLUTION_MEDIUM, FREENECT_DEPTH_11BIT));
-    const int rgb_res =
-        freenect_set_video_mode(f_dev, freenect_find_video_mode(FREENECT_RESOLUTION_MEDIUM, FREENECT_VIDEO_RGB));
+    const int depth_res = freenect_set_depth_mode(
+        f_dev, freenect_find_depth_mode(FREENECT_RESOLUTION_MEDIUM, FREENECT_DEPTH_11BIT));
+    const int rgb_res = freenect_set_video_mode(
+        f_dev, freenect_find_video_mode(FREENECT_RESOLUTION_MEDIUM, FREENECT_VIDEO_RGB));
     if (depth_res < 0 || rgb_res < 0)
     {
         RCLCPP_ERROR(logger, "Could not set resolution");
@@ -192,6 +195,89 @@ void KinectNode::timer_callback()
     }
 }
 
+void KinectNode::get_tilt_callback(const std::shared_ptr<wa3li_protocol::srv::GetTilt::Request>,
+                                   std::shared_ptr<wa3li_protocol::srv::GetTilt::Response> response)
+{
+    freenect_raw_tilt_state *state = freenect_get_tilt_state(m_f_dev);
+    response->tilt = DEG2RAD(freenect_get_tilt_degs(state));
+}
+
+static void get_tilt_callback_redirect(
+    const std::shared_ptr<wa3li_protocol::srv::GetTilt::Request> request,
+    std::shared_ptr<wa3li_protocol::srv::GetTilt::Response> response)
+{
+    KinectNode::get_kinect()->get_tilt_callback(request, response);
+}
+
+void KinectNode::set_tilt_callback(
+    const std::shared_ptr<wa3li_protocol::srv::SetTilt::Request> request,
+    std::shared_ptr<wa3li_protocol::srv::SetTilt::Response>)
+{
+    freenect_set_tilt_degs(m_f_dev, request->tilt);
+    // TODO: If necessary, use an action instead of a service
+    // while (true)
+    //{
+    //    freenect_raw_tilt_state *state = freenect_get_tilt_state(m_f_dev);
+    //    if (freenect_get_tilt_status(state) == TILT_STATUS_STOPPED)
+    //        break;
+    //}
+}
+
+static void set_tilt_callback_redirect(
+    const std::shared_ptr<wa3li_protocol::srv::SetTilt::Request> request,
+    std::shared_ptr<wa3li_protocol::srv::SetTilt::Response> response)
+{
+    KinectNode::get_kinect()->set_tilt_callback(request, response);
+}
+
+void KinectNode::get_led_callback(const std::shared_ptr<wa3li_protocol::srv::GetLed::Request>,
+                                  std::shared_ptr<wa3li_protocol::srv::GetLed::Response> response)
+{
+    static const std::unordered_map<freenect_led_options, std::string> led_options = {
+        {LED_OFF, "off"},
+        {LED_GREEN, "green"},
+        {LED_RED, "red"},
+        {LED_YELLOW, "yellow"},
+        {LED_BLINK_GREEN, "blink_green"},
+        {LED_BLINK_RED_YELLOW, "blink_red_yellow"}};
+    response->color = led_options.at(m_led_color);
+}
+
+static void get_led_callback_redirect(
+    const std::shared_ptr<wa3li_protocol::srv::GetLed::Request> request,
+    std::shared_ptr<wa3li_protocol::srv::GetLed::Response> response)
+{
+    KinectNode::get_kinect()->get_led_callback(request, response);
+}
+
+void KinectNode::set_led_callback(
+    const std::shared_ptr<wa3li_protocol::srv::SetLed::Request> request,
+    std::shared_ptr<wa3li_protocol::srv::SetLed::Response>)
+{
+    static const std::unordered_map<std::string, freenect_led_options> led_options = {
+        {"off", LED_OFF},
+        {"green", LED_GREEN},
+        {"red", LED_RED},
+        {"yellow", LED_YELLOW},
+        {"blink_green", LED_BLINK_GREEN},
+        {"blink_red_yellow", LED_BLINK_RED_YELLOW}};
+
+    const auto it = led_options.find(request->color);
+    if (it == led_options.end())
+    {
+        RCLCPP_ERROR(get_logger(), "Unrecognized led color %s", request->color.c_str());
+        return;
+    }
+    freenect_set_led(m_f_dev, it->second);
+}
+
+static void set_led_callback_redirect(
+    const std::shared_ptr<wa3li_protocol::srv::SetLed::Request> request,
+    std::shared_ptr<wa3li_protocol::srv::SetLed::Response> response)
+{
+    KinectNode::get_kinect()->set_led_callback(request, response);
+}
+
 KinectNode::KinectNode(freenect_context *const f_ctx, freenect_device *const f_dev)
     : Node("kinect_node"), m_f_ctx(f_ctx), m_f_dev(f_dev)
 {
@@ -201,6 +287,16 @@ KinectNode::KinectNode(freenect_context *const f_ctx, freenect_device *const f_d
     m_imu_publisher = create_publisher<sensor_msgs::msg::Imu>("kinect/imu", 10);
     m_depth_publisher = create_publisher<sensor_msgs::msg::Image>("kinect/depth", 10);
     m_rgb_publisher = create_publisher<sensor_msgs::msg::Image>("kinect/rgb", 10);
+
+    // Does not support std::bind ?. ROS2 examples do not use it too.
+    m_get_tilt_service = create_service<wa3li_protocol::srv::GetTilt>("kinect/get_tilt",
+                                                                      &get_tilt_callback_redirect);
+    m_set_tilt_service = create_service<wa3li_protocol::srv::SetTilt>("kinect/set_tilt",
+                                                                      &set_tilt_callback_redirect);
+    m_get_led_service =
+        create_service<wa3li_protocol::srv::GetLed>("kinect/get_led", &get_led_callback_redirect);
+    m_set_led_service =
+        create_service<wa3li_protocol::srv::SetLed>("kinect/set_led", &set_led_callback_redirect);
 
     m_timer = create_wall_timer(10ms, std::bind(&KinectNode::timer_callback, this));
 }
@@ -217,10 +313,13 @@ int main(int argc, char *argv[])
 {
     rclcpp::init(argc, argv);
     KinectNode *kinect_node = KinectNode::create();
-    if (kinect_node)
+    if (!kinect_node)
     {
-        rclcpp::spin(std::shared_ptr<KinectNode>(kinect_node));
+        RCLCPP_ERROR(rclcpp::get_logger("kinect_node"), "Could not create kinect node");
+        return -1;
     }
+
+    rclcpp::spin(std::shared_ptr<KinectNode>(kinect_node));
     rclcpp::shutdown();
 
     return 0;

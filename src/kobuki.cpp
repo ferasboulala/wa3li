@@ -1,12 +1,12 @@
 #include "wa3li/kobuki.h"
 
 #include <cmath>
-#include <tuple>
 #include <limits>
+#include <tuple>
 
 #define DEG2RAD(x) (x / 180.0 * M_PI)
 
-KobukiNode* KobukiNode::m_kobuki = nullptr;
+KobukiNode *KobukiNode::m_kobuki = nullptr;
 
 void KobukiNode::publish_imu(const kobuki::GyroData &gyro_data)
 {
@@ -33,8 +33,9 @@ static inline double angular_displacement(double left, double right)
 static inline std::tuple<uint16_t, int> tick_diff(unsigned short before, unsigned short after)
 {
     const uint16_t diff = after - before;
-    if (diff > std::numeric_limits<uint16_t>::max() / 2) {
-      return {before - after, -1};
+    if (diff > std::numeric_limits<uint16_t>::max() / 2)
+    {
+        return {before - after, -1};
     }
 
     return {diff, 1};
@@ -43,17 +44,23 @@ static inline std::tuple<uint16_t, int> tick_diff(unsigned short before, unsigne
 void KobukiNode::publish_transform(const kobuki::BasicData &basic_data)
 {
     geometry_msgs::msg::Transform transform;
-    const auto [left_diff, left_sign] = tick_diff(m_left_encoder.value_or(basic_data.left_data.encoder), basic_data.left_data.encoder);
-    const auto [right_diff, right_sign] = tick_diff(m_right_encoder.value_or(basic_data.right_data.encoder), basic_data.right_data.encoder);
-    const double left_angular_displacement = kobuki::Kobuki::ticks_to_radians(left_diff) * left_sign;
-    const double right_angular_displacement = kobuki::Kobuki::ticks_to_radians(right_diff) * right_sign;
+    const auto [left_diff, left_sign] = tick_diff(
+        m_left_encoder.value_or(basic_data.left_data.encoder), basic_data.left_data.encoder);
+    const auto [right_diff, right_sign] = tick_diff(
+        m_right_encoder.value_or(basic_data.right_data.encoder), basic_data.right_data.encoder);
+    const double left_angular_displacement =
+        kobuki::Kobuki::ticks_to_radians(left_diff) * left_sign;
+    const double right_angular_displacement =
+        kobuki::Kobuki::ticks_to_radians(right_diff) * right_sign;
     // To be interpreted as just translational displacement
-    transform.translation.x = translational_displacement(left_angular_displacement, right_angular_displacement);
+    transform.translation.x =
+        translational_displacement(left_angular_displacement, right_angular_displacement);
     transform.translation.y = 0;
     transform.translation.z = 0;
     transform.rotation.x = 0;
     transform.rotation.y = 0;
-    transform.rotation.z = angular_displacement(left_angular_displacement, right_angular_displacement);
+    transform.rotation.z =
+        angular_displacement(left_angular_displacement, right_angular_displacement);
 
     m_transform_publisher->publish(transform);
 
@@ -71,36 +78,44 @@ void KobukiNode::timer_callback()
     kobuki::GyroData gyro_data;
     kobuki::GeneralPurposeInput gpi;
     // TODO: Make this a service
-    //kobuki::PID pid;
+    // kobuki::PID pid;
 
-    if (m_driver->get_basic_data(basic_data, false)) {
+    if (m_driver->get_basic_data(basic_data, false))
+    {
         publish_transform(basic_data);
     }
 
-    if (m_driver->get_docking_ir(docking_ir, false)) {
+    if (m_driver->get_docking_ir(docking_ir, false))
+    {
     }
 
-    if (m_driver->get_inertial_data(inertial_data, false)) {
+    if (m_driver->get_inertial_data(inertial_data, false))
+    {
     }
 
-    if (m_driver->get_cliff_data(cliff_data, false)) {
+    if (m_driver->get_cliff_data(cliff_data, false))
+    {
     }
 
-    if (m_driver->get_current(current, false)) {
+    if (m_driver->get_current(current, false))
+    {
     }
 
-    if (m_driver->get_gyro_data(gyro_data, false)) {
+    if (m_driver->get_gyro_data(gyro_data, false))
+    {
         publish_imu(gyro_data);
     }
 
-    if (m_driver->get_gpi(gpi, false)) {
+    if (m_driver->get_gpi(gpi, false))
+    {
     }
 }
 
-KobukiNode* KobukiNode::create()
+KobukiNode *KobukiNode::create()
 {
     kobuki::Kobuki *driver = kobuki::Kobuki::create();
-    if (!driver) {
+    if (!driver)
+    {
         auto logger = rclcpp::get_logger("kinect_node");
         RCLCPP_ERROR(logger, "Could not create kobuki driver");
         return nullptr;

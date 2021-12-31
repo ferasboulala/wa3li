@@ -12,14 +12,8 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(wa3li_protocol REQUIRED)
 # TODO: Add libfreenect search
-
-rosidl_generate_interfaces(${PROJECT_NAME}
-    "srv/GetLed.srv"
-    "srv/SetLed.srv"
-    "srv/GetTilt.srv"
-    "srv/SetTilt.srv"
-)
 
 include_directories("${PROJECT_SOURCE_DIR}/include/")
 include_directories("${PROJECT_SOURCE_DIR}/depth2scan/")
@@ -38,6 +32,7 @@ macro(app progname source)
         ${std_msgs_LIBRARIES}
         ${sensor_msgs_LIBRARIES}
         ${nav_msgs_LIBRARIES}
+        ${wa3li_protocol_LIBRARIES}
         ${OpenCV_LIBRARIES}
         ${FREENECT_LIBRARIES}
         -lopencv_core
@@ -46,6 +41,7 @@ macro(app progname source)
         -pthread
         -lfreenect
         -lfreenect_sync)
+    ament_target_dependencies(${progname} wa3li_protocol)
 endmacro()
 
 app(kinect_node src/kinect.cpp)
