@@ -6,6 +6,8 @@
 
 #define DEG2RAD(x) (x / 180.0 * M_PI)
 
+// TODO: stamps should as much as possible use the time the data was acquired.
+
 KobukiNode *KobukiNode::m_kobuki = nullptr;
 
 void KobukiNode::publish_imu(const kobuki::GyroData &gyro_data)
@@ -68,6 +70,23 @@ void KobukiNode::publish_transform(const kobuki::BasicData &basic_data)
     m_right_encoder = basic_data.right_data.encoder;
 }
 
+void KobukiNode::publish_general_sensor_data(const kobuki::BasicData &basic_data) {}
+
+void KobukiNode::publish_battery_data(const kobuki::BasicData &basic_data)
+{
+    sensor_msgs::msg::BatteryState battery_state;
+    battery_state.header.frame_id = "kobuki";
+    battery_state.header.stamp = now();
+    battery_state.voltage = basic_data.battery_voltage;
+    battery_state.power_supply_status =
+        basic_data.is_charging ? sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_CHARGING
+                               : sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_DISCHARGING;
+    battery_state.power_supply_technology =
+        sensor_msgs::msg::BatteryState::POWER_SUPPLY_TECHNOLOGY_LION;
+
+    m_battery_state_publisher->publish(battery_state);
+}
+
 void KobukiNode::timer_callback()
 {
     kobuki::BasicData basic_data;
@@ -83,6 +102,8 @@ void KobukiNode::timer_callback()
     if (m_driver->get_basic_data(basic_data, false))
     {
         publish_transform(basic_data);
+        publish_general_sensor_data(basic_data);
+        publish_battery_data(basic_data);
     }
 
     if (m_driver->get_docking_ir(docking_ir, false))
@@ -131,7 +152,9 @@ KobukiNode::KobukiNode(kobuki::Kobuki *const driver) : Node("kobuki_node"), m_dr
     using namespace std::chrono_literals;
 
     m_imu_publisher = create_publisher<sensor_msgs::msg::Imu>("kobuki/imu", 10);
-    m_transform_publisher = create_publisher<geometry_msgs::msg::Transform>("kobuki/transform", 10);
+    m_transform_publisher = create_publisher<geometry_msgs::msg::Transform>("kobuki/odom", 10);
+    m_battery_state_publisher =
+        create_publisher<sensor_msgs::msg::BatteryState>("kobuki/battery", 10);
 
     m_timer = create_wall_timer(20ms, std::bind(&KobukiNode::timer_callback, this));
 }

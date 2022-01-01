@@ -233,6 +233,7 @@ static void set_tilt_callback_redirect(
 void KinectNode::get_led_callback(const std::shared_ptr<wa3li_protocol::srv::GetLed::Request>,
                                   std::shared_ptr<wa3li_protocol::srv::GetLed::Response> response)
 {
+    // TODO: Create enum values in the service definition instead of a string
     static const std::unordered_map<freenect_led_options, std::string> led_options = {
         {LED_OFF, "off"},
         {LED_GREEN, "green"},
