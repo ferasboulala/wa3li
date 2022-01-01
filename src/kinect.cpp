@@ -97,7 +97,8 @@ void KinectNode::depth_callback(void *data)
     m_depth_publisher->publish(depth_message);
 
     // FIXME: Use param tilt and height
-    const std::vector<double> scans = depth2scan::depth2scan(depth, 0, 0.34, nullptr);
+    const std::vector<double> scans =
+        depth2scan::depth2scan(depth, DEG2RAD(m_angle), m_height, nullptr);
 
     sensor_msgs::msg::LaserScan laser_scan_message;
     laser_scan_message.header = depth_message.header;
@@ -179,7 +180,13 @@ KinectNode *KinectNode::create()
     return m_kinect;
 }
 
-void KinectNode::timer_callback()
+void KinectNode::parameters_timer_callback()
+{
+    get_parameter("height", m_height);
+    get_parameter("angle", m_angle);
+}
+
+void KinectNode::topics_timer_callback()
 {
     const int status = freenect_process_events(m_f_ctx);
     if (status < 0)
@@ -280,7 +287,7 @@ static void set_led_callback_redirect(
 }
 
 KinectNode::KinectNode(freenect_context *const f_ctx, freenect_device *const f_dev)
-    : Node("kinect_node"), m_f_ctx(f_ctx), m_f_dev(f_dev)
+    : Node("kinect_node"), m_f_ctx(f_ctx), m_f_dev(f_dev), m_height(0.34), m_angle(0)
 {
     using namespace std::chrono_literals;
 
@@ -299,7 +306,12 @@ KinectNode::KinectNode(freenect_context *const f_ctx, freenect_device *const f_d
     m_set_led_service =
         create_service<wa3li_protocol::srv::SetLed>("kinect/set_led", &set_led_callback_redirect);
 
-    m_timer = create_wall_timer(10ms, std::bind(&KinectNode::timer_callback, this));
+    declare_parameter<double>("height", 0.34);
+    declare_parameter<double>("angle", 0);
+
+    m_topics_timer = create_wall_timer(10ms, std::bind(&KinectNode::topics_timer_callback, this));
+    m_parameters_timer =
+        create_wall_timer(1s, std::bind(&KinectNode::parameters_timer_callback, this));
 }
 
 KinectNode::~KinectNode()

@@ -39,12 +39,14 @@ private:
     KinectNode(freenect_context* const f_ctx, freenect_device* const f_dev);
 
     [[nodiscard]] bool imu_callback();
-    void timer_callback();
+    void topics_timer_callback();
+    void parameters_timer_callback();
 
     static KinectNode* m_kinect;
     freenect_context* const m_f_ctx;
     freenect_device* const m_f_dev;
-    rclcpp::TimerBase::SharedPtr m_timer;
+    rclcpp::TimerBase::SharedPtr m_topics_timer;
+    rclcpp::TimerBase::SharedPtr m_parameters_timer;
 
     rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr m_laser_scan_publisher;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imu_publisher;
@@ -56,6 +58,9 @@ private:
     rclcpp::Service<wa3li_protocol::srv::SetTilt>::SharedPtr m_set_tilt_service;
     rclcpp::Service<wa3li_protocol::srv::GetLed>::SharedPtr m_get_led_service;
     rclcpp::Service<wa3li_protocol::srv::SetLed>::SharedPtr m_set_led_service;
+
+    double m_height;
+    double m_angle;
 
     freenect_led_options m_led_color;
 };
