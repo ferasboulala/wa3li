@@ -43,7 +43,7 @@ static inline std::tuple<uint16_t, int> tick_diff(unsigned short before, unsigne
     return {diff, 1};
 }
 
-void KobukiNode::publish_transform(const kobuki::BasicData &basic_data)
+void KobukiNode::publisher_odometry_data(const kobuki::BasicData &basic_data)
 {
     geometry_msgs::msg::Transform transform;
     const auto [left_diff, left_sign] = tick_diff(
@@ -57,17 +57,25 @@ void KobukiNode::publish_transform(const kobuki::BasicData &basic_data)
     // To be interpreted as just translational displacement
     transform.translation.x =
         translational_displacement(left_angular_displacement, right_angular_displacement);
-    transform.translation.y = 0;
-    transform.translation.z = 0;
-    transform.rotation.x = 0;
-    transform.rotation.y = 0;
     transform.rotation.z =
         angular_displacement(left_angular_displacement, right_angular_displacement);
-
     m_transform_publisher->publish(transform);
+
+    if (m_prev_timestamp_ms)
+    {
+        const double dt = basic_data.timestamp_ms - *m_prev_timestamp_ms;
+        if (dt)
+        {
+            geometry_msgs::msg::Twist twist;
+            twist.linear.x = transform.translation.x / dt * 1000;
+            twist.angular.z = transform.rotation.z / dt * 1000;
+            m_twist_publisher->publish(twist);
+        }
+    }
 
     m_left_encoder = basic_data.left_data.encoder;
     m_right_encoder = basic_data.right_data.encoder;
+    m_prev_timestamp_ms = basic_data.timestamp_ms;
 }
 
 void KobukiNode::publish_general_sensor_data(const kobuki::BasicData &basic_data) {}
@@ -101,7 +109,7 @@ void KobukiNode::timer_callback()
 
     if (m_driver->get_basic_data(basic_data, false))
     {
-        publish_transform(basic_data);
+        publisher_odometry_data(basic_data);
         publish_general_sensor_data(basic_data);
         publish_battery_data(basic_data);
     }
@@ -152,7 +160,8 @@ KobukiNode::KobukiNode(kobuki::Kobuki *const driver) : Node("kobuki_node"), m_dr
     using namespace std::chrono_literals;
 
     m_imu_publisher = create_publisher<sensor_msgs::msg::Imu>("kobuki/imu", 10);
-    m_transform_publisher = create_publisher<geometry_msgs::msg::Transform>("kobuki/odom", 10);
+    m_transform_publisher = create_publisher<geometry_msgs::msg::Transform>("kobuki/transform", 10);
+    m_twist_publisher = create_publisher<geometry_msgs::msg::Twist>("kobuki/twist", 10);
     m_battery_state_publisher =
         create_publisher<sensor_msgs::msg::BatteryState>("kobuki/battery", 10);
 
