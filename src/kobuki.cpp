@@ -227,16 +227,19 @@ KobukiNode::KobukiNode(kobuki::Kobuki *const driver) : Node("kobuki_node"), m_dr
     using namespace std::chrono_literals;
     using std::placeholders::_1;
 
-    m_twist_subscriber = create_subscription<geometry_msgs::msg::Twist>("kobuki/cmd", 10, std::bind(&KobukiNode::twist_command_callback, this, _1));
+    m_twist_subscriber = create_subscription<geometry_msgs::msg::Twist>(
+        "kobuki/cmd", 10, std::bind(&KobukiNode::twist_command_callback, this, _1));
 
     m_imu_publisher = create_publisher<sensor_msgs::msg::Imu>("kobuki/imu", 10);
     m_transform_publisher = create_publisher<geometry_msgs::msg::Transform>("kobuki/transform", 10);
     m_twist_publisher = create_publisher<geometry_msgs::msg::Twist>("kobuki/twist", 10);
     m_battery_state_publisher =
         create_publisher<sensor_msgs::msg::BatteryState>("kobuki/battery", 10);
-    m_kobuki_basic_data_publisher = create_publisher<wa3li_protocol::msg::KobukiBasicData>("kobuki/sensors", 10);
+    m_kobuki_basic_data_publisher =
+        create_publisher<wa3li_protocol::msg::KobukiBasicData>("kobuki/sensors", 10);
     m_cliff_publisher = create_publisher<sensor_msgs::msg::LaserEcho>("kobuki/cliff", 10);
-    m_kobuki_current_publisher = create_publisher<wa3li_protocol::msg::KobukiCurrent>("kobuki/current", 10);
+    m_kobuki_current_publisher =
+        create_publisher<wa3li_protocol::msg::KobukiCurrent>("kobuki/current", 10);
     m_kobuki_gpi_publisher = create_publisher<wa3li_protocol::msg::KobukiGpi>("kobuki/gpi", 10);
 
     m_timer = create_wall_timer(20ms, std::bind(&KobukiNode::timer_callback, this));

@@ -11,14 +11,13 @@
 #include "sensor_msgs/msg/battery_state.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "sensor_msgs/msg/laser_echo.hpp"
-
 #include "wa3li_protocol/msg/kobuki_basic_data.hpp"
 #include "wa3li_protocol/msg/kobuki_current.hpp"
 #include "wa3li_protocol/msg/kobuki_gpi.hpp"
 #include "wa3li_protocol/srv/kobuki_power.hpp"
-#include "wa3li_protocol/srv/sound_sequence.hpp"
-#include "wa3li_protocol/srv/pid.hpp"
 #include "wa3li_protocol/srv/led.hpp"
+#include "wa3li_protocol/srv/pid.hpp"
+#include "wa3li_protocol/srv/sound_sequence.hpp"
 
 class KobukiNode : public rclcpp::Node
 {
@@ -40,9 +39,9 @@ private:
     void publisher_odometry_data(const kobuki::BasicData& basic_data);
     void publish_general_sensor_data(const kobuki::BasicData& basic_data);
     void publish_battery_data(const kobuki::BasicData& basic_data);
-    void publish_cliff_data(const kobuki::CliffData &cliff_data);
-    void publish_current(const kobuki::Current &current);
-    void publish_gpi(const kobuki::GeneralPurposeInput &gpi);
+    void publish_cliff_data(const kobuki::CliffData& cliff_data);
+    void publish_current(const kobuki::Current& current);
+    void publish_gpi(const kobuki::GeneralPurposeInput& gpi);
 
     static KobukiNode* m_kobuki;
     std::unique_ptr<kobuki::Kobuki> m_driver;
@@ -56,7 +55,8 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr m_battery_state_publisher;
     rclcpp::Publisher<sensor_msgs::msg::LaserEcho>::SharedPtr m_cliff_publisher;
 
-    rclcpp::Publisher<wa3li_protocol::msg::KobukiBasicData>::SharedPtr m_kobuki_basic_data_publisher;
+    rclcpp::Publisher<wa3li_protocol::msg::KobukiBasicData>::SharedPtr
+        m_kobuki_basic_data_publisher;
     rclcpp::Publisher<wa3li_protocol::msg::KobukiCurrent>::SharedPtr m_kobuki_current_publisher;
     rclcpp::Publisher<wa3li_protocol::msg::KobukiGpi>::SharedPtr m_kobuki_gpi_publisher;
 

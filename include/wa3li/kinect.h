@@ -28,7 +28,7 @@ public:
     void set_tilt_callback(const std::shared_ptr<wa3li_protocol::srv::SetTilt::Request> request,
                            std::shared_ptr<wa3li_protocol::srv::SetTilt::Response> response);
     void led_callback(const std::shared_ptr<wa3li_protocol::srv::Led::Request> request,
-                          std::shared_ptr<wa3li_protocol::srv::Led::Response> response);
+                      std::shared_ptr<wa3li_protocol::srv::Led::Response> response);
 
     ~KinectNode();
 
