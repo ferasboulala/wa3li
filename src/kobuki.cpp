@@ -6,9 +6,20 @@
 
 #define DEG2RAD(x) (x / 180.0 * M_PI)
 
+// TODO: Update QoS parameters to fulfill the requirements
+// TODO: Check if it is worth using UniquePtr/SharedPtr for zero-copies (probably on kinect)
+//       Check if it applies for intra process only (most likely the case) and if it uses shm
+//       segment.
+// TODO: Minimize latency and, when possible, use a concurrent executor.
 // TODO: stamps should as much as possible use the time the data was acquired.
 // docking ir
 // inertial data
+// power outputs
+// digital outputs
+// leds
+// pid
+// sound sequence
+// sound frequency
 
 KobukiNode *KobukiNode::m_kobuki = nullptr;
 
@@ -112,14 +123,14 @@ void KobukiNode::publish_battery_data(const kobuki::BasicData &basic_data)
                                : sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_DISCHARGING;
     battery_state.power_supply_technology =
         sensor_msgs::msg::BatteryState::POWER_SUPPLY_TECHNOLOGY_LION;
+    battery_state.percentage = kobuki::Kobuki::battery_percentage(battery_state.voltage);
+    battery_state.capacity = kobuki::BATTERY_CAPACITY;
 
     const float NaN = std::numeric_limits<float>::quiet_NaN();
     battery_state.temperature = NaN;
     battery_state.current = NaN;
     battery_state.charge = NaN;
-    battery_state.capacity = NaN;
     battery_state.design_capacity = NaN;
-    battery_state.percentage = NaN;
 
     m_battery_state_publisher->publish(battery_state);
 }
@@ -243,6 +254,9 @@ KobukiNode::KobukiNode(kobuki::Kobuki *const driver) : Node("kobuki_node"), m_dr
     m_kobuki_gpi_publisher = create_publisher<wa3li_protocol::msg::KobukiGpi>("kobuki/gpi", 10);
 
     m_timer = create_wall_timer(20ms, std::bind(&KobukiNode::timer_callback, this));
+
+    // TODO: Do it as a srv
+    m_driver->set_power_output(false, false, true, true);
 }
 
 int main(int argc, char *argv[])

@@ -18,11 +18,13 @@ find_package(wa3li_protocol REQUIRED)
 include_directories("${PROJECT_SOURCE_DIR}/include/")
 include_directories("${PROJECT_SOURCE_DIR}/depth2scan/")
 include_directories("${PROJECT_SOURCE_DIR}/kobuki/")
+include_directories("${PROJECT_SOURCE_DIR}/slam/")
 include_directories(${OpenCV_INCLUDE_DIRS})
 
 file(GLOB SUBMODULES_PROJECT_SOURCES
     "${PROJECT_SOURCE_DIR}/depth2scan/depth2scan/*.cpp"
     "${PROJECT_SOURCE_DIR}/kobuki/kobuki/*.cpp"
+    "${PROJECT_SOURCE_DIR}/slam/slam/*.cpp"
 )
 
 macro(app progname source)
@@ -46,10 +48,12 @@ endmacro()
 
 app(kinect_node src/kinect.cpp)
 app(kobuki_node src/kobuki.cpp)
+app(nav_node src/nav.cpp)
 
 install(TARGETS
     kinect_node
     kobuki_node
+    nav_node
     DESTINATION lib/${PROJECT_NAME})
 
 ament_package()

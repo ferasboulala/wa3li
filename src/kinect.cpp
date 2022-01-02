@@ -3,7 +3,6 @@
 #include <algorithm>
 
 #include "depth2scan/depth2scan.h"
-#include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/image_encodings.hpp"
 
 KinectNode *KinectNode::m_kinect = nullptr;
@@ -87,7 +86,7 @@ void KinectNode::depth_callback(void *data)
                             depth2scan::limits::DEPTH_WIDTH,
                             CV_16UC1,
                             reinterpret_cast<unsigned char *>(data));
-    frame.setTo(0, frame == FREENECT_DEPTH_RAW_NO_VALUE);
+    frame.setTo(FREENECT_DEPTH_RAW_MAX_VALUE, frame == FREENECT_DEPTH_RAW_NO_VALUE);
     cv::Mat depth;
     frame.convertTo(depth, CV_64F);
     depth = depth * (depth2scan::limits::MAX_DIST / FREENECT_DEPTH_RAW_MAX_VALUE);
@@ -100,12 +99,12 @@ void KinectNode::depth_callback(void *data)
     const std::vector<double> scans =
         depth2scan::depth2scan(depth, DEG2RAD(m_angle), m_height, nullptr);
 
+    constexpr double RANGE = DEG2RAD(depth2scan::limits::HORIZONTAL_FOV);
     sensor_msgs::msg::LaserScan laser_scan_message;
     laser_scan_message.header = depth_message.header;
-    laser_scan_message.angle_min = 0;
-    laser_scan_message.angle_max = DEG2RAD(depth2scan::limits::HORIZONTAL_FOV);
-    laser_scan_message.angle_increment =
-        DEG2RAD(depth2scan::limits::HORIZONTAL_FOV / depth2scan::limits::DEPTH_WIDTH);
+    laser_scan_message.angle_min = -RANGE / 2;
+    laser_scan_message.angle_max = RANGE / 2;
+    laser_scan_message.angle_increment = RANGE / depth2scan::limits::DEPTH_WIDTH;
     laser_scan_message.time_increment = 0;
     laser_scan_message.scan_time = 1.0 / 30;  // FIXME: Use real values
     laser_scan_message.range_min = depth2scan::limits::MIN_DIST;
@@ -113,7 +112,8 @@ void KinectNode::depth_callback(void *data)
     laser_scan_message.ranges.reserve(scans.size());
     for (double dist : scans)
     {
-        laser_scan_message.ranges.push_back(dist);
+        // TODO: Fix the bugs
+        laser_scan_message.ranges.push_back(std::min(dist, depth2scan::limits::MAX_DIST));
     }
     m_laser_scan_publisher->publish(laser_scan_message);
 }
@@ -268,7 +268,7 @@ KinectNode::KinectNode(freenect_context *const f_ctx, freenect_device *const f_d
 {
     using namespace std::chrono_literals;
 
-    m_laser_scan_publisher = create_publisher<sensor_msgs::msg::LaserScan>("kinect/laser_scan", 10);
+    m_laser_scan_publisher = create_publisher<sensor_msgs::msg::LaserScan>("kinect/scan", 10);
     m_imu_publisher = create_publisher<sensor_msgs::msg::Imu>("kinect/imu", 10);
     m_depth_publisher = create_publisher<sensor_msgs::msg::Image>("kinect/depth", 10);
     m_rgb_publisher = create_publisher<sensor_msgs::msg::Image>("kinect/rgb", 10);
