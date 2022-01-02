@@ -237,30 +237,9 @@ static void set_tilt_callback_redirect(
     KinectNode::get_kinect()->set_tilt_callback(request, response);
 }
 
-void KinectNode::get_led_callback(const std::shared_ptr<wa3li_protocol::srv::GetLed::Request>,
-                                  std::shared_ptr<wa3li_protocol::srv::GetLed::Response> response)
-{
-    // TODO: Create enum values in the service definition instead of a string
-    static const std::unordered_map<freenect_led_options, std::string> led_options = {
-        {LED_OFF, "off"},
-        {LED_GREEN, "green"},
-        {LED_RED, "red"},
-        {LED_YELLOW, "yellow"},
-        {LED_BLINK_GREEN, "blink_green"},
-        {LED_BLINK_RED_YELLOW, "blink_red_yellow"}};
-    response->color = led_options.at(m_led_color);
-}
-
-static void get_led_callback_redirect(
-    const std::shared_ptr<wa3li_protocol::srv::GetLed::Request> request,
-    std::shared_ptr<wa3li_protocol::srv::GetLed::Response> response)
-{
-    KinectNode::get_kinect()->get_led_callback(request, response);
-}
-
-void KinectNode::set_led_callback(
-    const std::shared_ptr<wa3li_protocol::srv::SetLed::Request> request,
-    std::shared_ptr<wa3li_protocol::srv::SetLed::Response>)
+void KinectNode::led_callback(
+    const std::shared_ptr<wa3li_protocol::srv::Led::Request> request,
+    std::shared_ptr<wa3li_protocol::srv::Led::Response>)
 {
     static const std::unordered_map<std::string, freenect_led_options> led_options = {
         {"off", LED_OFF},
@@ -279,11 +258,11 @@ void KinectNode::set_led_callback(
     freenect_set_led(m_f_dev, it->second);
 }
 
-static void set_led_callback_redirect(
-    const std::shared_ptr<wa3li_protocol::srv::SetLed::Request> request,
-    std::shared_ptr<wa3li_protocol::srv::SetLed::Response> response)
+static void led_callback_redirect(
+    const std::shared_ptr<wa3li_protocol::srv::Led::Request> request,
+    std::shared_ptr<wa3li_protocol::srv::Led::Response> response)
 {
-    KinectNode::get_kinect()->set_led_callback(request, response);
+    KinectNode::get_kinect()->led_callback(request, response);
 }
 
 KinectNode::KinectNode(freenect_context *const f_ctx, freenect_device *const f_dev)
@@ -301,10 +280,8 @@ KinectNode::KinectNode(freenect_context *const f_ctx, freenect_device *const f_d
                                                                       &get_tilt_callback_redirect);
     m_set_tilt_service = create_service<wa3li_protocol::srv::SetTilt>("kinect/set_tilt",
                                                                       &set_tilt_callback_redirect);
-    m_get_led_service =
-        create_service<wa3li_protocol::srv::GetLed>("kinect/get_led", &get_led_callback_redirect);
-    m_set_led_service =
-        create_service<wa3li_protocol::srv::SetLed>("kinect/set_led", &set_led_callback_redirect);
+    m_led_service =
+        create_service<wa3li_protocol::srv::Led>("kinect/led", &led_callback_redirect);
 
     declare_parameter<double>("height", 0.34);
     declare_parameter<double>("angle", 0);
