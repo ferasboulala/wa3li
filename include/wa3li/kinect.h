@@ -4,6 +4,7 @@
 
 #include "libfreenect/libfreenect.h"
 #include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
@@ -45,11 +46,11 @@ private:
     rclcpp::TimerBase::SharedPtr m_topics_timer;
     rclcpp::TimerBase::SharedPtr m_parameters_timer;
 
-    rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr m_laser_scan_publisher;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imu_publisher;
+    rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr m_laser_scan_publisher;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr m_depth_publisher;
+    rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr m_camera_info_publisher;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr m_rgb_publisher;
-    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr m_ir_publisher;
 
     rclcpp::Service<wa3li_protocol::srv::GetTilt>::SharedPtr m_get_tilt_service;
     rclcpp::Service<wa3li_protocol::srv::SetTilt>::SharedPtr m_set_tilt_service;

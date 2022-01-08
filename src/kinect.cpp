@@ -86,14 +86,35 @@ void KinectNode::depth_callback(void *data)
                             depth2scan::limits::DEPTH_WIDTH,
                             CV_16UC1,
                             reinterpret_cast<unsigned char *>(data));
-    frame.setTo(FREENECT_DEPTH_RAW_MAX_VALUE, frame == FREENECT_DEPTH_RAW_NO_VALUE);
+    frame.setTo(0, frame == FREENECT_DEPTH_RAW_NO_VALUE);
     cv::Mat depth;
-    frame.convertTo(depth, CV_64F);
+    frame.convertTo(depth, CV_32F);
     depth = depth * (depth2scan::limits::MAX_DIST / FREENECT_DEPTH_RAW_MAX_VALUE);
 
     const sensor_msgs::msg::Image depth_message =
-        prepare_image_message(depth, sensor_msgs::image_encodings::TYPE_64FC1, sizeof(double));
+        prepare_image_message(depth, sensor_msgs::image_encodings::TYPE_32FC1, sizeof(float));
     m_depth_publisher->publish(depth_message);
+
+    sensor_msgs::msg::CameraInfo info_message;
+    info_message.header = depth_message.header;
+    info_message.height = depth2scan::limits::DEPTH_HEIGHT;
+    info_message.width = depth2scan::limits::DEPTH_WIDTH;
+    info_message.distortion_model = "plumb_bob";
+    info_message.d.resize(5);
+    info_message.k[0] = 570;
+    info_message.k[2] = 314;
+    info_message.k[4] = 570;
+    info_message.k[5] = 239;
+    info_message.k[8] = 1.0;
+    info_message.r[0] = 1.0;
+    info_message.r[4] = 1.0;
+    info_message.r[8] = 1.0;
+    info_message.p[0] = 570;
+    info_message.p[2] = 314;
+    info_message.p[5] = 570;
+    info_message.p[6] = 235;
+    info_message.p[10] = 1.0;
+    m_camera_info_publisher->publish(info_message);
 
     // FIXME: Use param tilt and height
     std::vector<double> scans = depth2scan::depth2scan(depth, DEG2RAD(m_angle), m_height, nullptr);
@@ -269,10 +290,14 @@ KinectNode::KinectNode(freenect_context *const f_ctx, freenect_device *const f_d
 {
     using namespace std::chrono_literals;
 
-    m_laser_scan_publisher = create_publisher<sensor_msgs::msg::LaserScan>("kinect/scan", 10);
-    m_imu_publisher = create_publisher<sensor_msgs::msg::Imu>("kinect/imu", 10);
-    m_depth_publisher = create_publisher<sensor_msgs::msg::Image>("kinect/depth", 10);
-    m_rgb_publisher = create_publisher<sensor_msgs::msg::Image>("kinect/rgb", 10);
+    m_imu_publisher =
+        create_publisher<sensor_msgs::msg::Imu>("kinect/imu", rclcpp::SensorDataQoS());
+    m_laser_scan_publisher = create_publisher<sensor_msgs::msg::LaserScan>("kinect/scan", 1);
+    m_depth_publisher = create_publisher<sensor_msgs::msg::Image>("kinect/depth", 1);
+    m_camera_info_publisher =
+        create_publisher<sensor_msgs::msg::CameraInfo>("camera_info", rclcpp::SensorDataQoS());
+    m_rgb_publisher =
+        create_publisher<sensor_msgs::msg::Image>("kinect/rgb", rclcpp::SensorDataQoS());
 
     // Does not support std::bind ?. ROS2 examples do not use it too.
     m_get_tilt_service = create_service<wa3li_protocol::srv::GetTilt>("kinect/get_tilt",

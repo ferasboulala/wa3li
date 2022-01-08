@@ -15,23 +15,15 @@
 // TODO: Use the appropriate QoS settings for cmd
 // TODO: Stamp the Twist cmd and get rid of m_last_predict_stamp
 
-void SLAMNode::twist_command_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
+void SLAMNode::transform_command_callback(const geometry_msgs::msg::Transform::SharedPtr msg)
 {
-    const rclcpp::Time t = now();
-    if (!m_last_predict_stamp)
-    {
-        m_last_predict_stamp = t;
-        return;
-    }
-    const rclcpp::Duration diff = t - *m_last_predict_stamp;
-    const double dt = diff.seconds();
-    slam::Odometry odom = {msg->angular.z / 2 * dt, msg->linear.x * dt, msg->angular.z / 2 * dt};
+    slam::Odometry odom = {msg->rotation.z / 2, msg->translation.x, msg->rotation.z / 2};
     odom.translation /= MAP_RESOLUTION;
-    m_mcl->predict(odom, {0.005, 0.005, 0.05, 0.05});
+    m_mcl->predict(odom, {0.01, 0.01, 0.01, 0.01});
 
     const slam::Pose estimated_pose = slam::average_pose(m_mcl->get_particles());
     geometry_msgs::msg::TransformStamped transform_message;
-    transform_message.header.stamp = t;
+    transform_message.header.stamp = now();
     transform_message.header.frame_id = "map";
     transform_message.child_frame_id = "robot";
     // TODO : Clean up
@@ -47,9 +39,25 @@ void SLAMNode::twist_command_callback(const geometry_msgs::msg::Twist::SharedPtr
     transform_message.transform.rotation.w = q.w();
 
     m_tf_publisher->sendTransform(transform_message);
-    m_last_predict_stamp = t;
 }
 
+static void draw_particle(
+    cv::Mat &img, const slam::Pose &pose, cv::Scalar color, int size, bool filled = false)
+{
+    const auto coord = slam::pose_to_image_coordinates(img, pose);
+    int i, j;
+    std::tie(i, j) = coord;
+    cv::circle(img, {j, i}, size, color, filled ? cv::FILLED : 0);
+
+    const double x = pose.x + 10 * size * std::cos(pose.theta);
+    const double y = pose.y + 10 * size * std::sin(pose.theta);
+    const auto coord_ = slam::pose_to_image_coordinates(img, {x, y, 0});
+    int i_, j_;
+    std::tie(i_, j_) = coord_;
+    cv::line(img, {j, i}, {j_, i_}, color);
+}
+
+#include "slam/colors.h"
 void SLAMNode::laser_scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
     // FIXME: This should be in the laser scan message
@@ -59,6 +67,7 @@ void SLAMNode::laser_scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr 
     std::vector<std::tuple<double, double>> scans;
     for (unsigned i = 0; i < msg->ranges.size(); ++i)
     {
+        if (msg->ranges[i] == msg->range_max) continue;
         const double angle = i * msg->angle_increment + msg->angle_min;
         scans.push_back({angle, msg->ranges[i] / MAP_RESOLUTION});
     }
@@ -71,8 +80,13 @@ void SLAMNode::laser_scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr 
     constexpr slam::Pose sensor_offset = {KINECT_X_OFFSET, KINECT_Y_OFFSET, 0};
     m_mcl->update(scans, STDDEV, z_max, sensor_offset);
     const cv::Mat &best_map = m_mcl->get_particles().front().map;
-    cv::imshow("map", best_map);
-    cv::waitKey(33);
+    cv::Mat frame = best_map.clone();
+    for (const slam::Particle &particle : m_mcl->get_particles())
+    {
+        draw_particle(frame, particle.pose, GREEN, 5, true);
+    }
+    cv::imshow("map", frame);
+    cv::waitKey(10);
 
     // nav_msgs::msg::OccupancyGrid grid_message;
     // grid_message.header.frame_id = "nav";
@@ -96,16 +110,18 @@ SLAMNode::SLAMNode() : Node("slam_node")
 {
     using std::placeholders::_1;
 
-    m_twist_subscriber = create_subscription<geometry_msgs::msg::Twist>(
-        "kobuki/odom/twist", 10, std::bind(&SLAMNode::twist_command_callback, this, _1));
+    m_twist_subscriber = create_subscription<geometry_msgs::msg::Transform>(
+        "kobuki/odom/transform",
+        rclcpp::SensorDataQoS(),
+        std::bind(&SLAMNode::transform_command_callback, this, _1));
     m_scan_subscriber = create_subscription<sensor_msgs::msg::LaserScan>(
-        "kinect/scan", 10, std::bind(&SLAMNode::laser_scan_callback, this, _1));
+        "kinect/scan", 1, std::bind(&SLAMNode::laser_scan_callback, this, _1));
 
     m_tf_publisher = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
     m_grid_publisher = create_publisher<nav_msgs::msg::OccupancyGrid>("nav/grid", 10);
 
     // TODO: Use params for number of particles
-    m_mcl = std::make_unique<slam::MCL>(10);
+    m_mcl = std::make_unique<slam::MCL>(25);
 }
 
 int main(int argc, char *argv[])

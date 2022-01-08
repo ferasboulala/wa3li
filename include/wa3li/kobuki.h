@@ -5,7 +5,7 @@
 
 #include "diagnostic_msgs/msg/diagnostic_status.hpp"
 #include "geometry_msgs/msg/transform.hpp"
-#include "geometry_msgs/msg/twist.hpp"
+#include "geometry_msgs/msg/twist_stamped.hpp"
 #include "kobuki/kobuki.h"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/battery_state.hpp"
@@ -51,7 +51,7 @@ private:
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr m_twist_subscriber;
 
     rclcpp::Publisher<geometry_msgs::msg::Transform>::SharedPtr m_odom_transform_publisher;
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr m_odom_twist_publisher;
+    rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr m_odom_twist_publisher;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imu_publisher;
 
     rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr m_battery_state_publisher;

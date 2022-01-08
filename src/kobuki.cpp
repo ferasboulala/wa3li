@@ -84,9 +84,11 @@ void KobukiNode::publisher_odometry_data(const kobuki::BasicData &basic_data)
         const double dt = basic_data.timestamp_ms - *m_prev_timestamp_ms;
         if (dt)
         {
-            geometry_msgs::msg::Twist twist;
-            twist.linear.x = transform_message.translation.x / dt * 1000;
-            twist.angular.z = transform_message.rotation.z / dt * 1000;
+            geometry_msgs::msg::TwistStamped twist;
+            twist.header.frame_id = "kobuki";
+            twist.header.stamp = now();
+            twist.twist.linear.x = transform_message.translation.x / dt * 1000;
+            twist.twist.angular.z = transform_message.rotation.z / dt * 1000;
             m_odom_twist_publisher->publish(twist);
         }
     }
@@ -246,10 +248,12 @@ KobukiNode::KobukiNode(kobuki::Kobuki *const driver) : Node("kobuki_node"), m_dr
     m_twist_subscriber = create_subscription<geometry_msgs::msg::Twist>(
         "kobuki/cmd", 10, std::bind(&KobukiNode::twist_command_callback, this, _1));
 
-    m_imu_publisher = create_publisher<sensor_msgs::msg::Imu>("kobuki/odom/imu", 10);
-    m_odom_transform_publisher =
-        create_publisher<geometry_msgs::msg::Transform>("kobuki/odom/transform", 10);
-    m_odom_twist_publisher = create_publisher<geometry_msgs::msg::Twist>("kobuki/odom/twist", 10);
+    m_imu_publisher =
+        create_publisher<sensor_msgs::msg::Imu>("kobuki/odom/imu", rclcpp::SensorDataQoS());
+    m_odom_transform_publisher = create_publisher<geometry_msgs::msg::Transform>(
+        "kobuki/odom/transform", rclcpp::SensorDataQoS());
+    m_odom_twist_publisher = create_publisher<geometry_msgs::msg::TwistStamped>(
+        "kobuki/odom/twist", rclcpp::SensorDataQoS());
 
     m_battery_state_publisher =
         create_publisher<sensor_msgs::msg::BatteryState>("kobuki/metadata/battery", 10);
