@@ -7,6 +7,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "slam/mcl.h"
+#include "tf2_ros/transform_broadcaster.h"
 
 class SLAMNode : public rclcpp::Node
 {
@@ -21,7 +22,7 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr m_scan_subscriber;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr m_twist_subscriber;
 
-    rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr m_pose_publisher;
+    std::unique_ptr<tf2_ros::TransformBroadcaster> m_tf_publisher;
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr m_grid_publisher;
 
     std::unique_ptr<slam::MCL> m_mcl;

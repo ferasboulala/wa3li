@@ -4,6 +4,9 @@
 #include <limits>
 #include <tuple>
 
+#include "tf2/LinearMath/Quaternion.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
+
 #define DEG2RAD(x) (x / 180.0 * M_PI)
 
 // TODO: Update QoS parameters to fulfill the requirements
@@ -58,7 +61,7 @@ static inline std::tuple<uint16_t, int> tick_diff(unsigned short before, unsigne
 
 void KobukiNode::publisher_odometry_data(const kobuki::BasicData &basic_data)
 {
-    geometry_msgs::msg::Transform transform;
+    geometry_msgs::msg::Transform transform_message;
     const auto [left_diff, left_sign] = tick_diff(
         m_left_encoder.value_or(basic_data.left_data.encoder), basic_data.left_data.encoder);
     const auto [right_diff, right_sign] = tick_diff(
@@ -68,11 +71,13 @@ void KobukiNode::publisher_odometry_data(const kobuki::BasicData &basic_data)
     const double right_angular_displacement =
         kobuki::Kobuki::ticks_to_radians(right_diff) * right_sign;
     // To be interpreted as just translational displacement
-    transform.translation.x =
+    transform_message.translation.x =
         translational_displacement(left_angular_displacement, right_angular_displacement);
-    transform.rotation.z =
+    // To be interpreted as a rotation along the z axis, not an actual quaternion
+    transform_message.rotation.z =
         angular_displacement(left_angular_displacement, right_angular_displacement);
-    m_transform_publisher->publish(transform);
+
+    m_odom_transform_publisher->publish(transform_message);
 
     if (m_prev_timestamp_ms)
     {
@@ -80,9 +85,9 @@ void KobukiNode::publisher_odometry_data(const kobuki::BasicData &basic_data)
         if (dt)
         {
             geometry_msgs::msg::Twist twist;
-            twist.linear.x = transform.translation.x / dt * 1000;
-            twist.angular.z = transform.rotation.z / dt * 1000;
-            m_twist_publisher->publish(twist);
+            twist.linear.x = transform_message.translation.x / dt * 1000;
+            twist.angular.z = transform_message.rotation.z / dt * 1000;
+            m_odom_twist_publisher->publish(twist);
         }
     }
 
@@ -241,22 +246,25 @@ KobukiNode::KobukiNode(kobuki::Kobuki *const driver) : Node("kobuki_node"), m_dr
     m_twist_subscriber = create_subscription<geometry_msgs::msg::Twist>(
         "kobuki/cmd", 10, std::bind(&KobukiNode::twist_command_callback, this, _1));
 
-    m_imu_publisher = create_publisher<sensor_msgs::msg::Imu>("kobuki/imu", 10);
-    m_transform_publisher = create_publisher<geometry_msgs::msg::Transform>("kobuki/transform", 10);
-    m_twist_publisher = create_publisher<geometry_msgs::msg::Twist>("kobuki/twist", 10);
-    m_battery_state_publisher =
-        create_publisher<sensor_msgs::msg::BatteryState>("kobuki/battery", 10);
-    m_kobuki_basic_data_publisher =
-        create_publisher<wa3li_protocol::msg::KobukiBasicData>("kobuki/sensors", 10);
-    m_cliff_publisher = create_publisher<sensor_msgs::msg::LaserEcho>("kobuki/cliff", 10);
-    m_kobuki_current_publisher =
-        create_publisher<wa3li_protocol::msg::KobukiCurrent>("kobuki/current", 10);
-    m_kobuki_gpi_publisher = create_publisher<wa3li_protocol::msg::KobukiGpi>("kobuki/gpi", 10);
+    m_imu_publisher = create_publisher<sensor_msgs::msg::Imu>("kobuki/odom/imu", 10);
+    m_odom_transform_publisher =
+        create_publisher<geometry_msgs::msg::Transform>("kobuki/odom/transform", 10);
+    m_odom_twist_publisher = create_publisher<geometry_msgs::msg::Twist>("kobuki/odom/twist", 10);
 
-    m_timer = create_wall_timer(20ms, std::bind(&KobukiNode::timer_callback, this));
+    m_battery_state_publisher =
+        create_publisher<sensor_msgs::msg::BatteryState>("kobuki/metadata/battery", 10);
+    m_kobuki_basic_data_publisher =
+        create_publisher<wa3li_protocol::msg::KobukiBasicData>("kobuki/metadatasensors", 10);
+    m_cliff_publisher = create_publisher<sensor_msgs::msg::LaserEcho>("kobuki/metadata/cliff", 10);
+    m_kobuki_current_publisher =
+        create_publisher<wa3li_protocol::msg::KobukiCurrent>("kobuki/metadata/current", 10);
+    m_kobuki_gpi_publisher =
+        create_publisher<wa3li_protocol::msg::KobukiGpi>("kobuki/metadata/gpi", 10);
 
     // TODO: Do it as a srv
     m_driver->set_power_output(false, false, true, true);
+
+    m_timer = create_wall_timer(20ms, std::bind(&KobukiNode::timer_callback, this));
 }
 
 int main(int argc, char *argv[])

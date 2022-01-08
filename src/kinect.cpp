@@ -96,8 +96,9 @@ void KinectNode::depth_callback(void *data)
     m_depth_publisher->publish(depth_message);
 
     // FIXME: Use param tilt and height
-    const std::vector<double> scans =
-        depth2scan::depth2scan(depth, DEG2RAD(m_angle), m_height, nullptr);
+    std::vector<double> scans = depth2scan::depth2scan(depth, DEG2RAD(m_angle), m_height, nullptr);
+    // FIXME: Avoid reversing
+    std::reverse(scans.begin(), scans.end());
 
     constexpr double RANGE = DEG2RAD(depth2scan::limits::HORIZONTAL_FOV);
     sensor_msgs::msg::LaserScan laser_scan_message;

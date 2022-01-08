@@ -11,6 +11,9 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(wa3li_protocol REQUIRED)
 # TODO: Add libfreenect search
@@ -34,6 +37,8 @@ macro(app progname source)
         ${std_msgs_LIBRARIES}
         ${sensor_msgs_LIBRARIES}
         ${nav_msgs_LIBRARIES}
+        ${tf2_LIBRARIES}
+        ${tf2_ros_LIBRARIES}
         ${wa3li_protocol_LIBRARIES}
         ${OpenCV_LIBRARIES}
         ${FREENECT_LIBRARIES}
@@ -43,7 +48,7 @@ macro(app progname source)
         -pthread
         -lfreenect
         -lfreenect_sync)
-    ament_target_dependencies(${progname} wa3li_protocol)
+    ament_target_dependencies(${progname} wa3li_protocol tf2 tf2_ros)
 endmacro()
 
 app(kinect_node src/kinect.cpp)

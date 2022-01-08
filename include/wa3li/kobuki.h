@@ -11,6 +11,7 @@
 #include "sensor_msgs/msg/battery_state.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "sensor_msgs/msg/laser_echo.hpp"
+#include "tf2_ros/transform_broadcaster.h"
 #include "wa3li_protocol/msg/kobuki_basic_data.hpp"
 #include "wa3li_protocol/msg/kobuki_current.hpp"
 #include "wa3li_protocol/msg/kobuki_gpi.hpp"
@@ -49,12 +50,12 @@ private:
 
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr m_twist_subscriber;
 
+    rclcpp::Publisher<geometry_msgs::msg::Transform>::SharedPtr m_odom_transform_publisher;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr m_odom_twist_publisher;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr m_imu_publisher;
-    rclcpp::Publisher<geometry_msgs::msg::Transform>::SharedPtr m_transform_publisher;
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr m_twist_publisher;
+
     rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr m_battery_state_publisher;
     rclcpp::Publisher<sensor_msgs::msg::LaserEcho>::SharedPtr m_cliff_publisher;
-
     rclcpp::Publisher<wa3li_protocol::msg::KobukiBasicData>::SharedPtr
         m_kobuki_basic_data_publisher;
     rclcpp::Publisher<wa3li_protocol::msg::KobukiCurrent>::SharedPtr m_kobuki_current_publisher;
