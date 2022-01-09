@@ -86,10 +86,8 @@ void KinectNode::depth_callback(void *data)
                             depth2scan::limits::DEPTH_WIDTH,
                             CV_16UC1,
                             reinterpret_cast<unsigned char *>(data));
-    frame.setTo(0, frame == FREENECT_DEPTH_RAW_NO_VALUE);
     cv::Mat depth;
-    frame.convertTo(depth, CV_32F);
-    depth = depth * (depth2scan::limits::MAX_DIST / FREENECT_DEPTH_RAW_MAX_VALUE);
+    frame.convertTo(depth, CV_32F, 0.001);
 
     const sensor_msgs::msg::Image depth_message =
         prepare_image_message(depth, sensor_msgs::image_encodings::TYPE_32FC1, sizeof(float));
@@ -104,7 +102,7 @@ void KinectNode::depth_callback(void *data)
     info_message.k[0] = 570;
     info_message.k[2] = 314;
     info_message.k[4] = 570;
-    info_message.k[5] = 239;
+    info_message.k[5] = 235;
     info_message.k[8] = 1.0;
     info_message.r[0] = 1.0;
     info_message.r[4] = 1.0;
@@ -175,7 +173,7 @@ KinectNode *KinectNode::create()
     }
 
     const int depth_res = freenect_set_depth_mode(
-        f_dev, freenect_find_depth_mode(FREENECT_RESOLUTION_MEDIUM, FREENECT_DEPTH_11BIT));
+        f_dev, freenect_find_depth_mode(FREENECT_RESOLUTION_MEDIUM, FREENECT_DEPTH_MM));
     const int rgb_res = freenect_set_video_mode(
         f_dev, freenect_find_video_mode(FREENECT_RESOLUTION_MEDIUM, FREENECT_VIDEO_RGB));
     if (depth_res < 0 || rgb_res < 0)
@@ -295,7 +293,7 @@ KinectNode::KinectNode(freenect_context *const f_ctx, freenect_device *const f_d
     m_laser_scan_publisher = create_publisher<sensor_msgs::msg::LaserScan>("kinect/scan", 1);
     m_depth_publisher = create_publisher<sensor_msgs::msg::Image>("kinect/depth", 1);
     m_camera_info_publisher =
-        create_publisher<sensor_msgs::msg::CameraInfo>("camera_info", rclcpp::SensorDataQoS());
+        create_publisher<sensor_msgs::msg::CameraInfo>("kinect/camera_info", 1);
     m_rgb_publisher =
         create_publisher<sensor_msgs::msg::Image>("kinect/rgb", rclcpp::SensorDataQoS());
 

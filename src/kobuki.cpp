@@ -248,10 +248,12 @@ KobukiNode::KobukiNode(kobuki::Kobuki *const driver) : Node("kobuki_node"), m_dr
     m_twist_subscriber = create_subscription<geometry_msgs::msg::Twist>(
         "kobuki/cmd", 10, std::bind(&KobukiNode::twist_command_callback, this, _1));
 
+    rclcpp::QoS qos(5);
+    qos.reliable();
     m_imu_publisher =
         create_publisher<sensor_msgs::msg::Imu>("kobuki/odom/imu", rclcpp::SensorDataQoS());
-    m_odom_transform_publisher = create_publisher<geometry_msgs::msg::Transform>(
-        "kobuki/odom/transform", rclcpp::SensorDataQoS());
+    m_odom_transform_publisher =
+        create_publisher<geometry_msgs::msg::Transform>("kobuki/odom/transform", qos);
     m_odom_twist_publisher = create_publisher<geometry_msgs::msg::TwistStamped>(
         "kobuki/odom/twist", rclcpp::SensorDataQoS());
 

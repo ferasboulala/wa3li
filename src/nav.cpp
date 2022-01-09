@@ -12,33 +12,54 @@
 #define MAP_RESOLUTION 0.01  // cm
 
 // TODO: Make mcl's canvas size a parameter
-// TODO: Use the appropriate QoS settings for cmd
-// TODO: Stamp the Twist cmd and get rid of m_last_predict_stamp
+
+void SLAMNode::publish_queued_transforms()
+{
+    std_msgs::msg::Header header;
+    header.stamp = now();
+    header.frame_id = "map";
+    for (const auto &tf : m_transform_queue)
+    {
+        slam::Odometry odom = {tf.rotation.z / 2, tf.translation.x, tf.rotation.z / 2};
+        odom.translation /= MAP_RESOLUTION;
+        m_mcl->predict(odom, {0.001, 0.001, 0.001, 0.001});
+
+        const slam::Pose estimated_pose = slam::average_pose(m_mcl->get_particles());
+        geometry_msgs::msg::TransformStamped transform_message;
+        transform_message.header = header;
+        transform_message.child_frame_id = "robot";
+        // TODO : Clean up
+        transform_message.transform.translation.x = estimated_pose.x * MAP_RESOLUTION - 5;
+        transform_message.transform.translation.y = estimated_pose.y * MAP_RESOLUTION - 5;
+
+        tf2::Quaternion q;
+        q.setRPY(0, 0, estimated_pose.theta);
+        q.normalize();
+        transform_message.transform.rotation.x = q.x();
+        transform_message.transform.rotation.y = q.y();
+        transform_message.transform.rotation.z = q.z();
+        transform_message.transform.rotation.w = q.w();
+
+        m_tf_publisher->sendTransform(transform_message);
+    }
+
+    m_transform_queue.clear();
+}
 
 void SLAMNode::transform_command_callback(const geometry_msgs::msg::Transform::SharedPtr msg)
 {
-    slam::Odometry odom = {msg->rotation.z / 2, msg->translation.x, msg->rotation.z / 2};
-    odom.translation /= MAP_RESOLUTION;
-    m_mcl->predict(odom, {0.01, 0.01, 0.01, 0.01});
+    std::unique_lock<std::mutex> lock(m_transform_mutex);
+    m_transform_queue.push_back(*msg);
+    lock.unlock();
 
-    const slam::Pose estimated_pose = slam::average_pose(m_mcl->get_particles());
-    geometry_msgs::msg::TransformStamped transform_message;
-    transform_message.header.stamp = now();
-    transform_message.header.frame_id = "map";
-    transform_message.child_frame_id = "robot";
-    // TODO : Clean up
-    transform_message.transform.translation.x = estimated_pose.x * MAP_RESOLUTION - 5;
-    transform_message.transform.translation.y = estimated_pose.y * MAP_RESOLUTION - 5;
+    if (!m_write_mutex.try_lock())
+    {
+        return;
+    }
 
-    tf2::Quaternion q;
-    q.setRPY(0, 0, estimated_pose.theta);
-    q.normalize();
-    transform_message.transform.rotation.x = q.x();
-    transform_message.transform.rotation.y = q.y();
-    transform_message.transform.rotation.z = q.z();
-    transform_message.transform.rotation.w = q.w();
+    publish_queued_transforms();
 
-    m_tf_publisher->sendTransform(transform_message);
+    m_write_mutex.unlock();
 }
 
 static void draw_particle(
@@ -60,6 +81,8 @@ static void draw_particle(
 #include "slam/colors.h"
 void SLAMNode::laser_scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
+    std::lock_guard<std::mutex> write_guard(m_write_mutex);
+
     // FIXME: This should be in the laser scan message
     // or sent as a topic
     constexpr double STDDEV = 1;  // cell domain
@@ -104,30 +127,52 @@ void SLAMNode::laser_scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr 
     // std::copy(best_map.data, best_map.data + best_map.total(), grid_message.data.begin());
 
     // m_grid_publisher->publish(grid_message);
+
+    std::lock_guard<std::mutex> queue_guard(m_transform_mutex);
+
+    publish_queued_transforms();
 }
 
 SLAMNode::SLAMNode() : Node("slam_node")
 {
     using std::placeholders::_1;
 
-    m_twist_subscriber = create_subscription<geometry_msgs::msg::Transform>(
+    m_transform_callback_group =
+        create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    m_scan_callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
+    auto transform_opt = rclcpp::SubscriptionOptions();
+    transform_opt.callback_group = m_transform_callback_group;
+    auto scan_opt = rclcpp::SubscriptionOptions();
+    scan_opt.callback_group = m_scan_callback_group;
+
+    rclcpp::QoS qos(5);
+    qos.keep_all();
+    qos.reliable();
+    qos.durability_volatile();
+    m_transform_subscriber = create_subscription<geometry_msgs::msg::Transform>(
         "kobuki/odom/transform",
-        rclcpp::SensorDataQoS(),
-        std::bind(&SLAMNode::transform_command_callback, this, _1));
+        qos,
+        std::bind(&SLAMNode::transform_command_callback, this, _1),
+        transform_opt);
+
     m_scan_subscriber = create_subscription<sensor_msgs::msg::LaserScan>(
-        "kinect/scan", 1, std::bind(&SLAMNode::laser_scan_callback, this, _1));
+        "kinect/scan", 1, std::bind(&SLAMNode::laser_scan_callback, this, _1), scan_opt);
 
     m_tf_publisher = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
     m_grid_publisher = create_publisher<nav_msgs::msg::OccupancyGrid>("nav/grid", 10);
 
     // TODO: Use params for number of particles
-    m_mcl = std::make_unique<slam::MCL>(25);
+    m_mcl = std::make_unique<slam::MCL>(50);
 }
 
 int main(int argc, char *argv[])
 {
     rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<SLAMNode>());
+    rclcpp::executors::MultiThreadedExecutor executor;
+    auto slam_node = std::make_shared<SLAMNode>();
+    executor.add_node(slam_node);
+    executor.spin();
     rclcpp::shutdown();
 
     return 0;
