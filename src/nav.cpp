@@ -22,7 +22,7 @@ void SLAMNode::publish_queued_transforms()
     {
         slam::Odometry odom = {tf.rotation.z / 2, tf.translation.x, tf.rotation.z / 2};
         odom.translation /= MAP_RESOLUTION;
-        m_mcl->predict(odom, {0.001, 0.001, 0.001, 0.001});
+        m_mcl->predict(odom, {0.0001, 0.0001, 0.0001, 0.0001});
 
         const slam::Pose estimated_pose = slam::average_pose(m_mcl->get_particles());
         geometry_msgs::msg::TransformStamped transform_message;

@@ -125,8 +125,12 @@ void KinectNode::depth_callback(void *data)
     laser_scan_message.range_min = m_camera_info.min_dist;
     laser_scan_message.range_max = m_camera_info.max_dist;
     laser_scan_message.ranges.reserve(scans.size());
-    for (const auto &[angle, dist] : scans)
+    for (auto [angle, dist] : scans)
     {
+        if (dist == std::numeric_limits<double>::max())
+        {
+            dist = m_camera_info.max_dist;
+        }
         laser_scan_message.ranges.push_back(dist);
     }
     m_laser_scan_publisher->publish(laser_scan_message);
