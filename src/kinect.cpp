@@ -2,7 +2,6 @@
 
 #include <algorithm>
 
-#include "depth2scan/depth2scan.h"
 #include "sensor_msgs/image_encodings.hpp"
 
 KinectNode *KinectNode::m_kinect = nullptr;
@@ -70,10 +69,11 @@ sensor_msgs::msg::Image prepare_image_message(const cv::Mat &img,
 
 void KinectNode::rgb_callback(void *data)
 {
-    cv::Mat frame = cv::Mat(depth2scan::limits::DEPTH_HEIGHT,
-                            depth2scan::limits::DEPTH_WIDTH,
-                            CV_8UC3,
-                            reinterpret_cast<unsigned char *>(data));
+    constexpr unsigned KINECT_RGB_HEIGHT = 480;
+    constexpr unsigned KINECT_RGB_WIDTH = 640;
+
+    cv::Mat frame = cv::Mat(
+        KINECT_RGB_HEIGHT, KINECT_RGB_WIDTH, CV_8UC3, reinterpret_cast<unsigned char *>(data));
     cv::cvtColor(frame, frame, cv::COLOR_BGR2RGB);
     const sensor_msgs::msg::Image rgb_image = prepare_image_message(
         frame, sensor_msgs::image_encodings::TYPE_8UC3, sizeof(unsigned char) * 3);
@@ -82,10 +82,8 @@ void KinectNode::rgb_callback(void *data)
 
 void KinectNode::depth_callback(void *data)
 {
-    cv::Mat frame = cv::Mat(depth2scan::limits::DEPTH_HEIGHT,
-                            depth2scan::limits::DEPTH_WIDTH,
-                            CV_16UC1,
-                            reinterpret_cast<unsigned char *>(data));
+    cv::Mat frame = cv::Mat(
+        m_camera_info.rows, m_camera_info.cols, CV_16UC1, reinterpret_cast<unsigned char *>(data));
     cv::Mat depth;
     frame.convertTo(depth, CV_32F, 0.001);
 
@@ -95,8 +93,8 @@ void KinectNode::depth_callback(void *data)
 
     sensor_msgs::msg::CameraInfo info_message;
     info_message.header = depth_message.header;
-    info_message.height = depth2scan::limits::DEPTH_HEIGHT;
-    info_message.width = depth2scan::limits::DEPTH_WIDTH;
+    info_message.height = m_camera_info.rows;
+    info_message.width = m_camera_info.cols;
     info_message.distortion_model = "plumb_bob";
     info_message.d.resize(5);
     info_message.k[0] = 570;
@@ -114,26 +112,22 @@ void KinectNode::depth_callback(void *data)
     info_message.p[10] = 1.0;
     m_camera_info_publisher->publish(info_message);
 
-    // FIXME: Use param tilt and height
-    std::vector<double> scans = depth2scan::depth2scan(depth, DEG2RAD(m_angle), m_height, nullptr);
-    // FIXME: Avoid reversing
-    std::reverse(scans.begin(), scans.end());
+    const std::vector<std::tuple<double, double>> scans =
+        m_converter->convert<float>(depth, DEG2RAD(m_angle), m_height);
 
-    constexpr double RANGE = DEG2RAD(depth2scan::limits::HORIZONTAL_FOV);
     sensor_msgs::msg::LaserScan laser_scan_message;
     laser_scan_message.header = depth_message.header;
-    laser_scan_message.angle_min = -RANGE / 2;
-    laser_scan_message.angle_max = RANGE / 2;
-    laser_scan_message.angle_increment = RANGE / depth2scan::limits::DEPTH_WIDTH;
+    laser_scan_message.angle_min = std::get<0>(scans.front());
+    laser_scan_message.angle_max = std::get<0>(scans.back());
+    laser_scan_message.angle_increment = DEG2RAD(m_camera_info.hfov) / m_camera_info.cols;
     laser_scan_message.time_increment = 0;
-    laser_scan_message.scan_time = 1.0 / 30;  // FIXME: Use real values
-    laser_scan_message.range_min = depth2scan::limits::MIN_DIST;
-    laser_scan_message.range_max = depth2scan::limits::MAX_DIST;
+    laser_scan_message.scan_time = 1.0 / 30;
+    laser_scan_message.range_min = m_camera_info.min_dist;
+    laser_scan_message.range_max = m_camera_info.max_dist;
     laser_scan_message.ranges.reserve(scans.size());
-    for (double dist : scans)
+    for (const auto &[angle, dist] : scans)
     {
-        // TODO: Fix the bugs
-        laser_scan_message.ranges.push_back(std::min(dist, depth2scan::limits::MAX_DIST));
+        laser_scan_message.ranges.push_back(dist);
     }
     m_laser_scan_publisher->publish(laser_scan_message);
 }
@@ -306,6 +300,14 @@ KinectNode::KinectNode(freenect_context *const f_ctx, freenect_device *const f_d
 
     declare_parameter<double>("height", 0.34);
     declare_parameter<double>("angle", 0);
+
+    m_camera_info.rows = 480;
+    m_camera_info.cols = 640;
+    m_camera_info.vfov = 46.6;
+    m_camera_info.hfov = 58.5;
+    m_camera_info.min_dist = 0.4;
+    m_camera_info.max_dist = 5;
+    m_converter = std::make_unique<depth2scan::Converter>(m_camera_info);
 
     m_topics_timer = create_wall_timer(10ms, std::bind(&KinectNode::topics_timer_callback, this));
     m_parameters_timer =

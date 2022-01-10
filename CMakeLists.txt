@@ -16,22 +16,22 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(wa3li_protocol REQUIRED)
-# TODO: Add libfreenect search
+find_package(libfreenect REQUIRED)
 
-include_directories("${PROJECT_SOURCE_DIR}/include/")
-include_directories("${PROJECT_SOURCE_DIR}/depth2scan/")
-include_directories("${PROJECT_SOURCE_DIR}/kobuki/")
-include_directories("${PROJECT_SOURCE_DIR}/slam/")
-include_directories(${OpenCV_INCLUDE_DIRS})
-
-file(GLOB SUBMODULES_PROJECT_SOURCES
-    "${PROJECT_SOURCE_DIR}/depth2scan/depth2scan/*.cpp"
-    "${PROJECT_SOURCE_DIR}/kobuki/kobuki/*.cpp"
-    "${PROJECT_SOURCE_DIR}/slam/slam/*.cpp"
-)
+add_subdirectory(depth2scan)
+add_subdirectory(slam)
+add_subdirectory(kobuki)
 
 macro(app progname source)
-    add_executable(${progname} ${source} ${SUBMODULES_PROJECT_SOURCES})
+    add_executable(${progname} ${source} apps/thirdparty/log.cpp)
+    target_include_directories(${progname} PRIVATE ${OpenCV_INCLUDE_DIRS} depth2scan)
+    target_link_libraries(${progname} ${FREENECT_LIBRARIES} ${OpenCV_LIBRARIES}
+        -lopencv_core -lopencv_highgui -lopencv_imgproc depth2scan)
+endmacro()
+
+macro(app progname source)
+    add_executable(${progname} ${source})
+    target_include_directories(${progname} PRIVATE ${OpenCV_INCLUDE_DIRS} depth2scan slam include kobuki)
     target_link_libraries(${progname}
         ${rclcpp_LIBRARIES}
         ${std_msgs_LIBRARIES}
@@ -42,6 +42,9 @@ macro(app progname source)
         ${wa3li_protocol_LIBRARIES}
         ${OpenCV_LIBRARIES}
         ${FREENECT_LIBRARIES}
+        depth2scan
+        slam
+        kobuki
         -lopencv_core
         -lopencv_highgui
         -lopencv_imgproc

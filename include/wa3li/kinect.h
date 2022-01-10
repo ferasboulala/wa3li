@@ -1,8 +1,11 @@
 #pragma once
 
+#include <libfreenect/libfreenect.h>
+
+#include <memory>
 #include <opencv2/opencv.hpp>
 
-#include "libfreenect/libfreenect.h"
+#include "depth2scan/depth2scan.h"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/image.hpp"
@@ -58,6 +61,8 @@ private:
 
     double m_height;
     double m_angle;
+    depth2scan::CameraInfo m_camera_info;
+    std::unique_ptr<depth2scan::Converter> m_converter;
 
     freenect_led_options m_led_color;
 };
