@@ -9,31 +9,35 @@
 #include "slam/util.h"
 #include "tf2/LinearMath/Quaternion.h"
 
-#define MAP_RESOLUTION 0.01  // cm
-
-// TODO: Make mcl's canvas size a parameter
-
 void SLAMNode::publish_queued_transforms()
 {
     std_msgs::msg::Header header;
     header.stamp = now();
     header.frame_id = "map";
+
     for (const auto &tf : m_transform_queue)
     {
+        // Because ROS' common interfaces do not have a translation + rotation message, the
+        // convention is to send out a tf and to embed the values in the x and z values.
         slam::Odometry odom = {tf.rotation.z / 2, tf.translation.x, tf.rotation.z / 2};
-        odom.translation /= MAP_RESOLUTION;
+        odom.translation /= m_cell_resolution;
+
+        // TODO: Find a way to make this a parameter without having 4 double values
         m_mcl->predict(odom, {0.0001, 0.0001, 0.0001, 0.0001});
 
         const slam::Pose estimated_pose = slam::average_pose(m_mcl->get_particles());
         geometry_msgs::msg::TransformStamped transform_message;
         transform_message.header = header;
         transform_message.child_frame_id = "robot";
-        // TODO : Clean up
-        transform_message.transform.translation.x = estimated_pose.x * MAP_RESOLUTION - 5;
-        transform_message.transform.translation.y = estimated_pose.y * MAP_RESOLUTION - 5;
+
+        const slam::Pose starting_pose = m_mcl->starting_pose();
+        transform_message.transform.translation.x =
+            (estimated_pose.x - starting_pose.x) * m_cell_resolution;
+        transform_message.transform.translation.y =
+            (estimated_pose.y - starting_pose.y) * m_cell_resolution;
 
         tf2::Quaternion q;
-        q.setRPY(0, 0, estimated_pose.theta);
+        q.setRPY(0, 0, -estimated_pose.theta);
         q.normalize();
         transform_message.transform.rotation.x = q.x();
         transform_message.transform.rotation.y = q.y();
@@ -62,80 +66,98 @@ void SLAMNode::transform_command_callback(const geometry_msgs::msg::Transform::S
     m_write_mutex.unlock();
 }
 
-static void draw_particle(
-    cv::Mat &img, const slam::Pose &pose, cv::Scalar color, int size, bool filled = false)
-{
-    const auto coord = slam::pose_to_image_coordinates(img, pose);
-    int i, j;
-    std::tie(i, j) = coord;
-    cv::circle(img, {j, i}, size, color, filled ? cv::FILLED : 0);
-
-    const double x = pose.x + 10 * size * std::cos(pose.theta);
-    const double y = pose.y + 10 * size * std::sin(pose.theta);
-    const auto coord_ = slam::pose_to_image_coordinates(img, {x, y, 0});
-    int i_, j_;
-    std::tie(i_, j_) = coord_;
-    cv::line(img, {j, i}, {j_, i_}, color);
-}
-
-#include "slam/colors.h"
 void SLAMNode::laser_scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
     std::lock_guard<std::mutex> write_guard(m_write_mutex);
 
-    // FIXME: This should be in the laser scan message
-    // or sent as a topic
-    constexpr double STDDEV = 1;  // cell domain
-    const double z_max = msg->range_max / MAP_RESOLUTION;
-    std::vector<std::tuple<double, double>> scans;
+    const double scan_stddev_cell_domain = m_scan_stddev / m_cell_resolution;
+    const double dist_max_cell_domain = msg->range_max / m_cell_resolution;
+
+    std::vector<std::tuple<double, double>> scans_cell_domain;
     for (unsigned i = 0; i < msg->ranges.size(); ++i)
     {
+        // The range max readings are discarded because, in the case of a sensor like a kinect, it
+        // will not provide enough information to the map. That is, the kinect will return a maximum
+        // reading whenever the ray is too close or too far in which case, the cells in the path
+        // cannot be considered free or occupied.
         if (msg->ranges[i] == msg->range_max) continue;
+        if (i % m_every_other_ray) continue;
+
         const double angle = i * msg->angle_increment + msg->angle_min;
-        scans.push_back({angle, msg->ranges[i] / MAP_RESOLUTION});
+        scans_cell_domain.emplace_back(angle, msg->ranges[i] / m_cell_resolution);
     }
 
-    // TODO: Make this a parameter
-    // Use utility function for meters to cells
-    // Make that a wrapper around slam::MCL that accepts meters
-    constexpr double KINECT_Y_OFFSET = -0.065 / MAP_RESOLUTION;
-    constexpr double KINECT_X_OFFSET = 0.065 / MAP_RESOLUTION;
-    constexpr slam::Pose sensor_offset = {KINECT_X_OFFSET, KINECT_Y_OFFSET, 0};
-    m_mcl->update(scans, STDDEV, z_max, sensor_offset);
+    const double scanner_offset_y_cell_domain = m_scanner_offset_y / m_cell_resolution;
+    const double scanner_offset_x_cell_domain = m_scanner_offset_x / m_cell_resolution;
+    const slam::Pose sensor_offset = {
+        scanner_offset_x_cell_domain, scanner_offset_y_cell_domain, 0};
+
+    m_mcl->update(scans_cell_domain, scan_stddev_cell_domain, dist_max_cell_domain, sensor_offset);
+
     const cv::Mat &best_map = m_mcl->get_particles().front().map;
-    cv::Mat frame = best_map.clone();
-    for (const slam::Particle &particle : m_mcl->get_particles())
-    {
-        draw_particle(frame, particle.pose, GREEN, 5, true);
-    }
-    cv::imshow("map", frame);
-    cv::waitKey(10);
 
-    // nav_msgs::msg::OccupancyGrid grid_message;
-    // grid_message.header.frame_id = "nav";
-    // grid_message.header.stamp = now();
-    // grid_message.info.map_load_time = now();
-    // grid_message.info.resolution = MAP_RESOLUTION;
-    // grid_message.info.width = best_map.cols;
-    // grid_message.info.height = best_map.rows;
+    nav_msgs::msg::OccupancyGrid grid_message;
+    grid_message.header.frame_id = "map";
+    grid_message.header.stamp = now();
+    grid_message.info.map_load_time = grid_message.header.stamp;
+    grid_message.info.resolution = m_cell_resolution;
+    grid_message.info.width = best_map.cols;
+    grid_message.info.height = best_map.rows;
 
-    // cv::Mat int8_map = best_map * 100;
-    // int8_map.convertTo(int8_map, CV_8UC1);
-    // int8_map = 100 - int8_map;
-    // int8_map.setTo(-1, int8_map == 50);  // TODO: Do it at the slam:: level
-    // grid_message.data.resize(best_map.total());
-    // std::copy(best_map.data, best_map.data + best_map.total(), grid_message.data.begin());
+    const slam::Pose starting_pose = m_mcl->starting_pose();
+    grid_message.info.origin.position.x = -starting_pose.x * m_cell_resolution;
+    grid_message.info.origin.position.y = -starting_pose.y * m_cell_resolution;
 
-    // m_grid_publisher->publish(grid_message);
+    cv::Mat int8_map;
+    best_map.convertTo(int8_map, CV_8SC1, 100);
+    int8_map = 100 - int8_map;
+    cv::flip(int8_map, int8_map, -1);  // FIXME: Figure out why rviz displays it flipped
+    grid_message.data.resize(int8_map.total());
+    std::copy(int8_map.data, int8_map.data + int8_map.total(), grid_message.data.begin());
+    m_grid_publisher->publish(grid_message);
 
     std::lock_guard<std::mutex> queue_guard(m_transform_mutex);
-
     publish_queued_transforms();
 }
 
 SLAMNode::SLAMNode() : Node("slam_node")
 {
     using std::placeholders::_1;
+
+    // ON THE MULTITHREADED DESIGN:
+    // The kobuki will publish the odometry data at a rate of 50Hz. The kinect will publish the
+    // laser scan at a rate of 30Hz. The predict() step is very fast meaning the odometry data
+    // will never queue. On the other hand, the update() step can take up to 100 ms to finish
+    // (depends on parameters like number of particles, number of rays and sensor maximum distance).
+    // With a single threaded node, the odometry data will end up queueing. Because the ROS
+    // executors iterate through the subscribed topis in round robin fashion, the node would process
+    // one scan, then one odometry update, then one scan again. The second scan is up to date but
+    // the odometry data is very old which causes the system to completely fail and to queue up
+    // messages at a rate of 100 ms / 20 ms = 5 Hz. To circumvent this, the node uses
+    // a multithreaded executor and empties the whole buffer of odometry after a laser scan message
+    // was processed.
+
+    declare_parameter<std::string>("transform_topic", "kobuki/odom/transform");
+    declare_parameter<std::string>("scan_topic", "kinect/scan");
+    declare_parameter<int>("n_particles", 25);
+    declare_parameter<int>("every_other_ray", 10);
+    declare_parameter<double>("scan_stddev", 0.05);
+    declare_parameter<double>("cell_resolution", 0.05);
+    declare_parameter<double>("scanner_offset_x", 0.065);
+    declare_parameter<double>("scanner_offset_y", -0.065);
+
+    std::string transform_topic;
+    std::string scan_topic;
+    unsigned n_particles;
+
+    get_parameter("transform_topic", transform_topic);
+    get_parameter("scan_topic", scan_topic);
+    get_parameter("n_particles", n_particles);
+    get_parameter("every_other_ray", m_every_other_ray);
+    get_parameter("scan_stddev", m_scan_stddev);
+    get_parameter("cell_resolution", m_cell_resolution);
+    get_parameter("scanner_offset_x", m_scanner_offset_x);
+    get_parameter("scanner_offset_y", m_scanner_offset_y);
 
     m_transform_callback_group =
         create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -151,19 +173,20 @@ SLAMNode::SLAMNode() : Node("slam_node")
     qos.reliable();
     qos.durability_volatile();
     m_transform_subscriber = create_subscription<geometry_msgs::msg::Transform>(
-        "kobuki/odom/transform",
+        transform_topic,
         qos,
         std::bind(&SLAMNode::transform_command_callback, this, _1),
         transform_opt);
 
+    // The algorithm needs the latest laser scan only because in the event that it processes them
+    // not as fast as the src publishes them, queuing them up is pointless.
     m_scan_subscriber = create_subscription<sensor_msgs::msg::LaserScan>(
-        "kinect/scan", 1, std::bind(&SLAMNode::laser_scan_callback, this, _1), scan_opt);
+        scan_topic, 1, std::bind(&SLAMNode::laser_scan_callback, this, _1), scan_opt);
 
     m_tf_publisher = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
     m_grid_publisher = create_publisher<nav_msgs::msg::OccupancyGrid>("nav/grid", 10);
 
-    // TODO: Use params for number of particles
-    m_mcl = std::make_unique<slam::MCL>(50);
+    m_mcl = std::make_unique<slam::MCL>(n_particles, cv::Size(500, 500));
 }
 
 int main(int argc, char *argv[])

@@ -29,6 +29,11 @@ private:
     std::unique_ptr<tf2_ros::TransformBroadcaster> m_tf_publisher;
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr m_grid_publisher;
 
+    double m_scan_stddev;
+    double m_cell_resolution;
+    double m_scanner_offset_x;
+    double m_scanner_offset_y;
+    unsigned m_every_other_ray;
     std::unique_ptr<slam::MCL> m_mcl;
 
     std::mutex m_transform_mutex;
