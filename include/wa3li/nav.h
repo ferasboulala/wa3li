@@ -1,3 +1,4 @@
+#include <array>
 #include <memory>
 #include <mutex>
 
@@ -42,6 +43,7 @@ private:
     double m_scanner_offset_x;
     double m_scanner_offset_y;
     unsigned m_every_other_ray;
+    std::array<double, 4> m_motion_error;
     std::unique_ptr<slam::MCL> m_mcl;
 
     std::mutex m_transform_mutex;
