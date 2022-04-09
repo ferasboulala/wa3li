@@ -2,6 +2,8 @@
 #include <mutex>
 
 #include "geometry_msgs/msg/pose.hpp"
+#include "geometry_msgs/msg/pose_array.hpp"
+#include "geometry_msgs/msg/pose_with_covariance.hpp"
 #include "geometry_msgs/msg/transform.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -16,6 +18,7 @@ public:
     ~SLAMNode() = default;
 
 private:
+    slam::Pose normalize(const slam::Pose &pose) const;
     void publish_queued_transforms();
     void transform_command_callback(const geometry_msgs::msg::Transform::SharedPtr msg);
     void laser_scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
@@ -27,7 +30,12 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr m_scan_subscriber;
 
     std::unique_ptr<tf2_ros::TransformBroadcaster> m_tf_publisher;
+
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr m_grid_publisher;
+    rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr m_pose_publisher;
+    rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr m_pose_array_publisher;
+    rclcpp::Publisher<geometry_msgs::msg::PoseWithCovariance>::SharedPtr
+        m_pose_with_covariance_publisher;
 
     double m_scan_stddev;
     double m_cell_resolution;

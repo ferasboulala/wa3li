@@ -9,11 +9,35 @@
 #include "slam/util.h"
 #include "tf2/LinearMath/Quaternion.h"
 
+static void tf2_to_msg_quaternion(const tf2::Quaternion &q, geometry_msgs::msg::Quaternion &msg)
+{
+    msg.x = q.x();
+    msg.y = q.y();
+    msg.z = q.z();
+    msg.w = q.w();
+}
+
+// TODO: Move to slam::
+slam::Pose SLAMNode::normalize(const slam::Pose &pose) const
+{
+    const slam::Pose starting_pose = m_mcl->starting_pose();
+
+    slam::Pose normalized_pose;
+    normalized_pose.x = (pose.x - starting_pose.x) * m_cell_resolution;
+    normalized_pose.y = (pose.y - starting_pose.y) * m_cell_resolution;
+    normalized_pose.theta = pose.theta;
+
+    return normalized_pose;
+}
+
 void SLAMNode::publish_queued_transforms()
 {
     std_msgs::msg::Header header;
     header.stamp = now();
     header.frame_id = "map";
+
+    geometry_msgs::msg::PoseArray pose_array_message;
+    pose_array_message.header = header;
 
     for (const auto &tf : m_transform_queue)
     {
@@ -23,30 +47,53 @@ void SLAMNode::publish_queued_transforms()
         odom.translation /= m_cell_resolution;
 
         // TODO: Find a way to make this a parameter without having 4 double values
-        m_mcl->predict(odom, {0.0001, 0.0001, 0.0001, 0.0001});
+        m_mcl->predict(odom, {0.001, 0.001, 0.001, 0.001});
 
         const slam::Pose estimated_pose = slam::average_pose(m_mcl->get_particles());
         geometry_msgs::msg::TransformStamped transform_message;
         transform_message.header = header;
         transform_message.child_frame_id = "robot";
 
-        const slam::Pose starting_pose = m_mcl->starting_pose();
-        transform_message.transform.translation.x =
-            (estimated_pose.x - starting_pose.x) * m_cell_resolution;
-        transform_message.transform.translation.y =
-            (estimated_pose.y - starting_pose.y) * m_cell_resolution;
+        const slam::Pose normalized_pose = normalize(estimated_pose);
+        transform_message.transform.translation.x = normalized_pose.x;
+        transform_message.transform.translation.y = normalized_pose.y;
 
         tf2::Quaternion q;
+        // FIXME: Figure out why rviz displays angles in the opposite way
         q.setRPY(0, 0, -estimated_pose.theta);
         q.normalize();
-        transform_message.transform.rotation.x = q.x();
-        transform_message.transform.rotation.y = q.y();
-        transform_message.transform.rotation.z = q.z();
-        transform_message.transform.rotation.w = q.w();
+        tf2_to_msg_quaternion(q, transform_message.transform.rotation);
+
+        geometry_msgs::msg::Pose pose_message;
+        pose_message.position.x = transform_message.transform.translation.x;
+        pose_message.position.y = transform_message.transform.translation.y;
+        pose_message.orientation = transform_message.transform.rotation;
 
         m_tf_publisher->sendTransform(transform_message);
+        m_pose_publisher->publish(pose_message);
     }
 
+    const std::vector<slam::Particle> &particles = m_mcl->get_particles();
+    pose_array_message.poses.reserve(particles.size());
+    for (const slam::Particle &particle : particles)
+    {
+        geometry_msgs::msg::Pose pose;
+
+        const slam::Pose normalized_pose = normalize(particle.pose);
+        pose.position.x = normalized_pose.x;
+        pose.position.y = normalized_pose.y;
+
+        tf2::Quaternion q;
+        // FIXME: Why TF is this not negative in rviz??
+        q.setRPY(0, 0, particle.pose.theta);
+        q.normalize();
+
+        tf2_to_msg_quaternion(q, pose.orientation);
+
+        pose_array_message.poses.push_back(pose);
+    }
+
+    m_pose_array_publisher->publish(pose_array_message);
     m_transform_queue.clear();
 }
 
@@ -139,7 +186,7 @@ SLAMNode::SLAMNode() : Node("slam_node")
 
     declare_parameter<std::string>("transform_topic", "kobuki/odom/transform");
     declare_parameter<std::string>("scan_topic", "kinect/scan");
-    declare_parameter<int>("n_particles", 25);
+    declare_parameter<int>("n_particles", 50);
     declare_parameter<int>("every_other_ray", 10);
     declare_parameter<double>("scan_stddev", 0.05);
     declare_parameter<double>("cell_resolution", 0.05);
@@ -184,7 +231,13 @@ SLAMNode::SLAMNode() : Node("slam_node")
         scan_topic, 1, std::bind(&SLAMNode::laser_scan_callback, this, _1), scan_opt);
 
     m_tf_publisher = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
+    // TODO: Make these topics parameters
     m_grid_publisher = create_publisher<nav_msgs::msg::OccupancyGrid>("nav/grid", 10);
+    m_pose_publisher = create_publisher<geometry_msgs::msg::Pose>("nav/pose", 10);
+    m_pose_array_publisher = create_publisher<geometry_msgs::msg::PoseArray>("nav/particles", 10);
+    m_pose_with_covariance_publisher =
+        create_publisher<geometry_msgs::msg::PoseWithCovariance>("nav/pose_var", 10);
 
     m_mcl = std::make_unique<slam::MCL>(n_particles, cv::Size(500, 500));
 }
