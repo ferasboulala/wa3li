@@ -246,7 +246,7 @@ KobukiNode::KobukiNode(kobuki::Kobuki *const driver) : Node("kobuki_node"), m_dr
     using std::placeholders::_1;
 
     m_twist_subscriber = create_subscription<geometry_msgs::msg::Twist>(
-        "kobuki/cmd", 10, std::bind(&KobukiNode::twist_command_callback, this, _1));
+        "cmd_vel", 10, std::bind(&KobukiNode::twist_command_callback, this, _1));
 
     rclcpp::QoS qos(5);
     qos.reliable();

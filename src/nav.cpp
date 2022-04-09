@@ -59,7 +59,7 @@ void SLAMNode::publish_queued_transforms()
 
         tf2::Quaternion q;
         // FIXME: Figure out why rviz displays angles in the opposite way
-        q.setRPY(0, 0, -estimated_pose.theta);
+        q.setRPY(0, 0, estimated_pose.theta);
         q.normalize();
         tf2_to_msg_quaternion(q, transform_message.transform.rotation);
 
@@ -156,7 +156,7 @@ void SLAMNode::laser_scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr 
 
     cv::Mat display_map;
     display_map = 100 - (best_map / (static_cast<double>(255) / 100));
-    cv::flip(display_map, display_map, -1);  // FIXME: Figure out why rviz displays it flipped
+    cv::flip(display_map, display_map, 0);  // FIXME: Figure out why rviz displays it flipped
     grid_message.data.resize(display_map.total());
     std::copy(display_map.data, display_map.data + display_map.total(), grid_message.data.begin());
     m_grid_publisher->publish(grid_message);
@@ -184,10 +184,10 @@ SLAMNode::SLAMNode() : Node("slam_node")
 
     declare_parameter<std::string>("transform_topic", "kobuki/odom/transform");
     declare_parameter<std::string>("scan_topic", "kinect/scan");
-    declare_parameter<int>("n_particles", 200);
+    declare_parameter<int>("n_particles", 500);
     declare_parameter<int>("every_other_ray", 10);
     // https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3304120/#:~:text=Experimental%20results%20show%20that%20the,resolution%20of%20the%20depth%20measurements.
-    declare_parameter<double>("scan_stddev", 0.04);
+    declare_parameter<double>("scan_stddev", 0.1);
     declare_parameter<double>("cell_resolution", 0.05);
     declare_parameter<double>("scanner_offset_x", 0.065);
     declare_parameter<double>("scanner_offset_y", -0.065);
